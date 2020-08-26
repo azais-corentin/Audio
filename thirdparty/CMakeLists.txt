@@ -6,3 +6,7 @@ target_sources(Audio PRIVATE
 target_include_directories(Audio PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# PortAudio
+add_subdirectory(portaudio)
+target_link_libraries(Audio PRIVATE portaudio)

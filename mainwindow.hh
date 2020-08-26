@@ -8,6 +8,7 @@
 #include <qcustomplot/qcustomplot.h>
 
 #include <memory>
+#include <vector>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -19,7 +20,9 @@ class MainWindow : public QMainWindow {
   Q_OBJECT
 
  private:
-  static constexpr uint32_t mSampleSize = 16;
+  static constexpr uint32_t mSampleSize     = 16;
+  static constexpr uint32_t mBytesPerSample = mSampleSize / 8;
+  static constexpr double   mSampleFactor   = ((1 << mSampleSize) - 1) / 2.;
 
  public:
   MainWindow(QWidget* parent = nullptr);
@@ -36,7 +39,8 @@ class MainWindow : public QMainWindow {
  private:
   void updateMeasurementDuration();
 
-  void handleFinished(QAudio::State state);
+  void handleRecordedData();
+  void handleFinished();
 
  private:
   Ui::MainWindow* ui;
@@ -44,4 +48,6 @@ class MainWindow : public QMainWindow {
   std::unique_ptr<QAudioOutput> mAudioOutput;
   std::unique_ptr<QAudioInput>  mAudioInput;
   QBuffer                       mBufferOutput, mBufferInput;
+  std::vector<double>           mReferenceSignal;
+  QCustomPlot                   mQuickPlot;
 };

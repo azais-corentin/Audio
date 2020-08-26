@@ -7,8 +7,11 @@ class fft {
   using complex = std::complex<double>;
 
  public:
-  // FFT functions
-  static std::vector<complex> r2c(std::vector<double> input);
+  // Forward
+  static std::vector<complex> r2c(std::vector<double>& input);
+
+  // Backward
+  static std::vector<double> c2r(std::vector<complex>& input);
 
   // Data extraction
 };

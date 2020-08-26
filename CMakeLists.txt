@@ -1,16 +1,17 @@
 cmake_minimum_required(VERSION 3.17)
 
-set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake
-  CACHE STRING "Vcpkg toolchain file")
+#set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake
+#  CACHE STRING "Vcpkg toolchain file")
 
 message(STATUS "CMake ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}.${CMAKE_PATCH_VERSION}" )
-
 
 project(Audio
   VERSION 0.1.0
   DESCRIPTION "Audio in C++"
   HOMEPAGE_URL "https://github.com/Haellsigh/Audio"
   LANGUAGES CXX)
+
+message(STATUS ${CMAKE_TOOLCHAIN_FILE})
 
 # Qt MOC/UIC/RCC
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -26,6 +27,8 @@ target_sources(Audio PRIVATE
   mainwindow.ui
   fft.hh
   fft.cc
+  sinesweep.hh
+  sinesweep.cc
 )
 
 ##### Compilation options
@@ -53,7 +56,7 @@ find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
   message(STATUS "Enabled CCache")
   set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
-  set(CMAKE_CUDA_COMPILER_LAUNCHER "${CCACHE_PROGRAM}") # CMake 3.9+
+  set(CMAKE_CUDA_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
 endif()
 
 ##### Libraries
@@ -63,11 +66,13 @@ target_link_libraries(Audio PRIVATE Qt5::Widgets Qt5::Multimedia Qt5::PrintSuppo
 
 # FFTW
 find_package(FFTW3 CONFIG REQUIRED)
-target_link_libraries(Audio PRIVATE FFTW3::fftw3)
 find_package(FFTW3f CONFIG REQUIRED)
-target_link_libraries(Audio PRIVATE FFTW3::fftw3f)
 find_package(FFTW3l CONFIG REQUIRED)
-target_link_libraries(Audio PRIVATE FFTW3::fftw3l)
+target_link_libraries(Audio PRIVATE FFTW3::fftw3 FFTW3::fftw3f FFTW3::fftw3l)
 
 # Thirdparty libraries
 add_subdirectory(thirdparty)
+
+# Ranges-v3
+find_package(range-v3 CONFIG REQUIRED)
+target_link_libraries(Audio PRIVATE range-v3 range-v3-meta range-v3::meta range-v3-concepts)
