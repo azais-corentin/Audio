@@ -27,8 +27,9 @@ target_sources(Audio PRIVATE
   mainwindow.ui
   fft.hh
   fft.cc
-  sinesweep.hh
-  sinesweep.cc
+  #audioio.hh
+  #audioio.cc
+  #paex_record.c
 )
 
 ##### Compilation options
@@ -64,15 +65,23 @@ endif()
 find_package(Qt5 COMPONENTS Core Widgets Multimedia PrintSupport REQUIRED)
 target_link_libraries(Audio PRIVATE Qt5::Widgets Qt5::Multimedia Qt5::PrintSupport)
 
+# Thirdparty libraries
+add_subdirectory(thirdparty)
+
 # FFTW
 find_package(FFTW3 CONFIG REQUIRED)
 find_package(FFTW3f CONFIG REQUIRED)
 find_package(FFTW3l CONFIG REQUIRED)
 target_link_libraries(Audio PRIVATE FFTW3::fftw3 FFTW3::fftw3f FFTW3::fftw3l)
 
-# Thirdparty libraries
-add_subdirectory(thirdparty)
-
 # Ranges-v3
 find_package(range-v3 CONFIG REQUIRED)
 target_link_libraries(Audio PRIVATE range-v3 range-v3-meta range-v3::meta range-v3-concepts)
+
+# Spdlog
+find_package(spdlog CONFIG REQUIRED)
+target_link_libraries(Audio PRIVATE spdlog::spdlog spdlog::spdlog_header_only)
+
+# PortAudio
+find_package(portaudio CONFIG REQUIRED)
+target_link_libraries(Audio PRIVATE portaudio portaudio_static)

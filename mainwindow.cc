@@ -10,10 +10,14 @@
 #include <fft.hh>
 #include <range/v3/view/zip.hpp>
 
+//#include "audioio.hh"
+
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWindow)
 {
   ui->setupUi(this);
   setupUi();
+
+  // AudioIO io;
 }
 
 MainWindow::~MainWindow()
