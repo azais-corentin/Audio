@@ -6,18 +6,19 @@
 #include <numbers>
 
 #include <fftw3.h>
+#include <spdlog/spdlog.h>
 #include <QDebug>
 #include <fft.hh>
 #include <range/v3/view/zip.hpp>
-
-//#include "audioio.hh"
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWindow)
 {
   ui->setupUi(this);
   setupUi();
 
-  // AudioIO io;
+  connect(&mAudio, &AudioIO::audioFinished, []() { spdlog::info("Audio finished!"); });
+
+  mAudio.startSweep(20, 20000, 1 << 15, 192000, -12);
 }
 
 MainWindow::~MainWindow()
@@ -31,20 +32,20 @@ void MainWindow::setupUi()
   mQuickPlot.setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
   mQuickPlot.xAxis->grid()->setSubGridVisible(true);
   mQuickPlot.axisRect()->setupFullAxesBox();
-  connect(mQuickPlot.xAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged),
-          mQuickPlot.xAxis2, qOverload<const QCPRange&>(&QCPAxis::setRange));
-  connect(mQuickPlot.yAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged),
-          mQuickPlot.yAxis2, qOverload<const QCPRange&>(&QCPAxis::setRange));
+  connect(mQuickPlot.xAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged), mQuickPlot.xAxis2,
+          qOverload<const QCPRange&>(&QCPAxis::setRange));
+  connect(mQuickPlot.yAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged), mQuickPlot.yAxis2,
+          qOverload<const QCPRange&>(&QCPAxis::setRange));
 
   ui->plot->addGraph();
   ui->plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
   ui->plot->xAxis->grid()->setSubGridVisible(true);
   ui->plot->xAxis->setScaleType(QCPAxis::stLogarithmic);
   ui->plot->axisRect()->setupFullAxesBox();
-  connect(ui->plot->xAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged),
-          ui->plot->xAxis2, qOverload<const QCPRange&>(&QCPAxis::setRange));
-  connect(ui->plot->yAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged),
-          ui->plot->yAxis2, qOverload<const QCPRange&>(&QCPAxis::setRange));
+  connect(ui->plot->xAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged), ui->plot->xAxis2,
+          qOverload<const QCPRange&>(&QCPAxis::setRange));
+  connect(ui->plot->yAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged), ui->plot->yAxis2,
+          qOverload<const QCPRange&>(&QCPAxis::setRange));
   ui->plot->xAxis->setNumberPrecision(0);
   ui->plot->xAxis->setNumberFormat("f");
   QSharedPointer<QCPAxisTickerLog> logTicker(new QCPAxisTickerLog);
@@ -57,8 +58,8 @@ void MainWindow::setupUi()
   // Supported sample rates combo box
   const auto outputSR = QAudioDeviceInfo::defaultOutputDevice().supportedSampleRates();
   const auto inputSR  = QAudioDeviceInfo::defaultInputDevice().supportedSampleRates();
-  const auto supportedSRset = QSet<int>{outputSR.begin(), outputSR.end()}.intersect(
-      {inputSR.begin(), inputSR.end()});
+  const auto supportedSRset =
+      QSet<int>{outputSR.begin(), outputSR.end()}.intersect({inputSR.begin(), inputSR.end()});
   auto supportedSR = QList<int>{supportedSRset.begin(), supportedSRset.end()};
   std::sort(supportedSR.begin(), supportedSR.end());
 
@@ -68,6 +69,9 @@ void MainWindow::setupUi()
   ui->eSampleRate->setCurrentIndex(ui->eSampleRate->count() - 1);
 
   // Length
+  ui->eLength->addItem("14", (1u << 14u));
+  ui->eLength->addItem("15", (1u << 15u));
+  ui->eLength->addItem("16", (1u << 16u));
   ui->eLength->addItem("128k", (1u << 17u));
   ui->eLength->addItem("256k", (1u << 18u));
   ui->eLength->addItem("512k", (1u << 19u));
@@ -127,10 +131,10 @@ void MainWindow::handleFinished()
 
   std::vector<double> input_spl_ft(n);
 
-  std::transform(std::execution::par, input_ft.begin(), input_ft.end(),
-                 input_spl_ft.begin(), [&](const auto& a) {
+  std::transform(std::execution::par, input_ft.begin(), input_ft.end(), input_spl_ft.begin(),
+                 [&](const auto& a) {
                    const double normalized_magnitude = std::abs(a) / n;
-                   const double dbfs = 20 * std::log10(normalized_magnitude);
+                   const double dbfs                 = 20 * std::log10(normalized_magnitude);
                    return 120 + dbfs - sensitivitydB;
                  });
 
@@ -183,14 +187,12 @@ void MainWindow::handleFinished()
   }
 
   std::vector<double> input_f_ft(n);
-  std::generate(input_f_ft.begin(), input_f_ft.end(), [&, k = 0]() mutable {
-    return k++ * 2 * static_cast<double>(sampleRate) / n;
-  });
+  std::generate(input_f_ft.begin(), input_f_ft.end(),
+                [&, k = 0]() mutable { return k++ * 2 * static_cast<double>(sampleRate) / n; });
 
   auto graph = ui->plot->addGraph();
-  graph->setData(
-      QVector<double>{input_smoothed_spl_f_ft.begin(), input_smoothed_spl_f_ft.end()},
-      QVector<double>{input_smoothed_spl_ft.begin(), input_smoothed_spl_ft.end()}, true);
+  graph->setData(QVector<double>{input_smoothed_spl_f_ft.begin(), input_smoothed_spl_f_ft.end()},
+                 QVector<double>{input_smoothed_spl_ft.begin(), input_smoothed_spl_ft.end()}, true);
   graph->rescaleAxes();
   /*ui->plot->graph(1)->setData(QVector<double>::fromStdVector(data_f),
                               QVector<double>::fromStdVector(data_spl), true);*/
@@ -274,7 +276,7 @@ void MainWindow::on_bMeasure_clicked()
   mReferenceSignal.clear();
   mReferenceSignal.reserve(length);
   for (uint32_t i = 0; i < length; i++) {
-    const double t  = static_cast<double>(length - i - 1) / sampleRate;
+    const double t  = static_cast<double>(i) / sampleRate;
     const double kt = std::pow(k, t);
     const double amplitude =
         volume * std::sin(2 * std::numbers::pi * f0 * ((kt - 1) / std::log(k)));
@@ -330,11 +332,10 @@ void MainWindow::on_bMeasure_clicked()
   mAudioInput->setNotifyInterval(notifyInterval);
 
   // connect(mAudioInput.get(), &QAudioInput::notify, this, &MainWindow::handleFinished);
-  connect(mAudioOutput.get(), &QAudioOutput::stateChanged,
-          [&](const QAudio::State& state) {
-            if (state == QAudio::IdleState)
-              handleFinished();
-          });
+  connect(mAudioOutput.get(), &QAudioOutput::stateChanged, [&](const QAudio::State& state) {
+    if (state == QAudio::IdleState)
+      handleFinished();
+  });
 
   mAudioOutput->start(&mBufferOutput);
   mAudioInput->start(&mBufferInput);
@@ -346,8 +347,7 @@ void MainWindow::updateMeasurementDuration()
   const auto length     = ui->eLength->currentData().toUInt();
 
   // Duration [s] = Length [samples] / SampleRate [samples/s]
-  ui->lvDuration->setText(
-      QString::number(static_cast<double>(length) / sampleRate, 'f', 1) + " s");
+  ui->lvDuration->setText(QString::number(static_cast<double>(length) / sampleRate, 'f', 1) + " s");
 }
 
 void MainWindow::handleRecordedData()

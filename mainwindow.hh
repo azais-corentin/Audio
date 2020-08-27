@@ -1,14 +1,15 @@
 #pragma once
 
+#include <memory>
+#include <vector>
+
+#include <qcustomplot/qcustomplot.h>
 #include <QAudioInput>
 #include <QAudioOutput>
 #include <QBuffer>
 #include <QMainWindow>
 
-#include <qcustomplot/qcustomplot.h>
-
-#include <memory>
-#include <vector>
+#include "audioio.hh"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -44,6 +45,8 @@ class MainWindow : public QMainWindow {
 
  private:
   Ui::MainWindow* ui;
+
+  AudioIO mAudio;
 
   std::unique_ptr<QAudioOutput> mAudioOutput;
   std::unique_ptr<QAudioInput>  mAudioInput;

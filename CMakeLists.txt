@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.18)
 
 #set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake
 #  CACHE STRING "Vcpkg toolchain file")
@@ -27,9 +27,9 @@ target_sources(Audio PRIVATE
   mainwindow.ui
   fft.hh
   fft.cc
-  #audioio.hh
-  #audioio.cc
-  #paex_record.c
+  audioio.hh
+  audioio.cc
+  paex_record.c
 )
 
 ##### Compilation options
