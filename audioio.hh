@@ -24,13 +24,20 @@ struct AudioData {
   std::vector<float> data_reference;  // Reference signal, going to the speakers
   SweepParameters    sweep;
 
-  void init(AudioIO*    parent,
-            std::size_t output_channels_count,
-            std::size_t length,
-            float       sample_rate,
-            float       f0,
-            float       ff,
-            float       amplitude);
+  void init(AudioIO*    parent_,
+            std::size_t output_channels_count_,
+            std::size_t length_,
+            std::size_t silence_length_,
+            float       sample_rate_,
+            float       f0_,
+            float       ff_,
+            float       amplitude_);
+};
+
+struct MeasurementData {
+  std::vector<float>&reference_signal, &measured_signal;
+  float              sample_rate;
+  std::size_t        length;
 };
 
 class AudioIO : public QObject {
@@ -40,13 +47,15 @@ class AudioIO : public QObject {
   AudioIO();
   ~AudioIO();
 
-  std::vector<float>& supportedSampleRates();
+  const std::vector<float>& supportedSampleRates();
 
   void startSweep(float f0, float ff, std::size_t length, uint32_t sampleRate, float volumeDBFS);
 
-  PaStream*           getStream();
+  PaStream* getStream();
+
   std::vector<float>& getReferenceData();
   std::vector<float>& getMeasuredData();
+  MeasurementData     getMeasurement();
 
   void onAudioFinished();
 
@@ -56,7 +65,7 @@ class AudioIO : public QObject {
  private:
   bool      mInitSuccessful = false;
   AudioData mData;
-  PaStream* mStream;
+  PaStream* mStream = nullptr;
 
   std::vector<float> mSupportedSampleRates;
 };

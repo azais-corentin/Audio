@@ -17,7 +17,8 @@ constexpr const float allSampleRates[] = {8000,  11025, 16000, 22050,  44100,
 
 void AudioData::init(AudioIO*    parent_,
                      std::size_t output_channels_count_,
-                     size_t      length_,
+                     std::size_t length_,
+                     std::size_t silence_length_,
                      float       sample_rate_,
                      float       f0_,
                      float       ff_,
@@ -26,13 +27,19 @@ void AudioData::init(AudioIO*    parent_,
   parent                = parent_;
   output_channels_count = output_channels_count_;
   index                 = 0;
-  silence_length        = 0.1 * sample_rate_;
+  silence_length        = silence_length_;
   length                = length_;
   sample_rate           = sample_rate_;
-  data_measured.clear();
-  data_measured.reserve(length);
-  data_reference.clear();
-  data_reference.reserve(length);
+  if (length + silence_length != data_measured.capacity()) {
+    data_measured.clear();
+    data_measured.reserve(length + silence_length);
+    data_reference.clear();
+    data_reference.reserve(length + silence_length);
+  } else {
+    // Resize without changing capacity
+    data_measured.resize(0);
+    data_reference.resize(0);
+  }
 
   sweep.f0        = f0_;
   sweep.ff        = ff_;
@@ -54,11 +61,12 @@ static int audioCallback(const void*   input_buffer,
 
   PaStreamCallbackResult state;
   std::size_t            samples_to_process;
-  std::size_t            samples_left = data->silence_length + data->length - data->index;
+  std::size_t            samples_left = data->length + data->silence_length - data->index;
 
   if (samples_left < samples_per_buffer) {
     samples_to_process = samples_left;
     state              = paComplete;
+    spdlog::info("Stream completed!");
   } else {
     samples_to_process = samples_per_buffer;
     state              = paContinue;
@@ -89,8 +97,8 @@ static int audioCallback(const void*   input_buffer,
 
   if (state == paComplete) {
     // Always output silence at the end
-    for (std::size_t c = 0; c < data->output_channels_count; c++)
-      *wo_speaker++ = 0;
+    /*for (std::size_t c = 0; c < data->output_channels_count; c++)
+     *wo_speaker++ = 0;*/
   }
 
   data->index += samples_to_process;
@@ -213,6 +221,11 @@ AudioIO::~AudioIO()
     spdlog::error("PortAudio error code {}: {}", err, Pa_GetErrorText(err));
 }
 
+const std::vector<float>& AudioIO::supportedSampleRates()
+{
+  return mSupportedSampleRates;
+}
+
 void AudioIO::startSweep(float       f0,
                          float       ff,
                          std::size_t length,
@@ -228,6 +241,11 @@ void AudioIO::startSweep(float       f0,
   // Validate volume
   if (volumeDBFS > 0) {
     spdlog::error("Volume {} dBFS cannot be above 0", volumeDBFS);
+    return;
+  }
+  // Check we're not already sweeping
+  if (Pa_IsStreamActive(mStream) == 1) {
+    spdlog::error("Previous sweep is not finished");
     return;
   }
 
@@ -277,7 +295,8 @@ void AudioIO::startSweep(float       f0,
                outputLatency * 1000);
 
   // Configure audio data
-  mData.init(this, 2, length, sampleRate, f0, ff, std::pow(10, volumeDBFS / 20.));
+  mData.init(this, 2, length, (inputLatency + outputLatency) * sampleRate, sampleRate, f0, ff,
+             std::pow(10, volumeDBFS / 20.));
 
   // Configure stream
   PaError err;
@@ -289,6 +308,14 @@ void AudioIO::startSweep(float       f0,
     return;
   }
 
+  err = Pa_SetStreamFinishedCallback(mStream, [](void* userData) {
+    static_cast<AudioData*>(userData)->parent->onAudioFinished();
+  });
+  if (err != paNoError) {
+    spdlog::error("Pa_SetStreamFinishedCallback error #{}: {} ", err, Pa_GetErrorText(err));
+    return;
+  }
+
   err = Pa_StartStream(mStream);
   if (err != paNoError) {
     spdlog::error("Pa_StartStream error #{}: {} ", err, Pa_GetErrorText(err));
@@ -296,17 +323,6 @@ void AudioIO::startSweep(float       f0,
   }
 
   spdlog::info("Hardware sample rate: {}", Pa_GetStreamInfo(mStream)->sampleRate);
-
-  Pa_SetStreamFinishedCallback(mStream, [](void* userData) {
-    spdlog::info("Pa_SetStreamFinishedCallback");
-    auto data = static_cast<AudioData*>(userData);
-    data->parent->onAudioFinished();
-    PaError err = Pa_CloseStream(data->parent->getStream());
-    if (err != paNoError) {
-      spdlog::error("Pa_CloseStream error #{}: {} ", err, Pa_GetErrorText(err));
-      return;
-    }
-  });
 }
 
 PaStream* AudioIO::getStream()
@@ -324,7 +340,22 @@ std::vector<float>& AudioIO::getMeasuredData()
   return mData.data_measured;
 }
 
+MeasurementData AudioIO::getMeasurement()
+{
+  return MeasurementData{
+      .reference_signal = mData.data_reference,
+      .measured_signal  = mData.data_measured,
+      .sample_rate      = mData.sample_rate,
+      .length           = mData.length,
+  };
+}
+
 void AudioIO::onAudioFinished()
 {
+  spdlog::info(mData.data_measured.size());
+  spdlog::info(mData.data_reference.size());
+  spdlog::info(mData.data_measured.capacity());
+  spdlog::info(mData.data_reference.capacity());
+
   emit audioFinished();
 }

@@ -4,14 +4,14 @@
 #include <vector>
 
 class fft {
-  using complex = std::complex<double>;
+  using fcomplex = std::complex<float>;
 
  public:
   // Forward
-  static std::vector<complex> r2c(std::vector<double>& input);
+  static std::vector<fcomplex> r2c(std::vector<float>& input);
 
   // Backward
-  static std::vector<double> c2r(std::vector<complex>& input);
+  static std::vector<float> c2r(std::vector<fcomplex>& input);
 
   // Data extraction
 };
