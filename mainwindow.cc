@@ -1,15 +1,21 @@
 #include "mainwindow.hh"
 #include "./ui_mainwindow.h"
-
-#include <algorithm>
-#include <execution>
-#include <numbers>
+#include "timedelay.hh"
 
 #include <fftw3.h>
 #include <spdlog/spdlog.h>
 #include <QDebug>
 #include <fft.hh>
+#include <range/v3/action/drop.hpp>
+#include <range/v3/to_container.hpp>
+#include <range/v3/view/drop.hpp>
+#include <range/v3/view/drop_last.hpp>
 #include <range/v3/view/zip.hpp>
+
+#include <algorithm>
+#include <concepts>
+#include <execution>
+#include <numbers>
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWindow)
 {
@@ -27,23 +33,26 @@ MainWindow::~MainWindow()
 void MainWindow::setupUi()
 {
   mQuickPlot.addGraph();
+  mQuickPlot.addGraph();
+  mQuickPlot.graph(0)->setPen({Qt::blue});
+  mQuickPlot.graph(1)->setPen({Qt::red});
   mQuickPlot.setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
   mQuickPlot.xAxis->grid()->setSubGridVisible(true);
   mQuickPlot.axisRect()->setupFullAxesBox();
-  connect(mQuickPlot.xAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged), mQuickPlot.xAxis2,
-          qOverload<const QCPRange&>(&QCPAxis::setRange));
-  connect(mQuickPlot.yAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged), mQuickPlot.yAxis2,
-          qOverload<const QCPRange&>(&QCPAxis::setRange));
+  connect(mQuickPlot.xAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged),
+          mQuickPlot.xAxis2, qOverload<const QCPRange&>(&QCPAxis::setRange));
+  connect(mQuickPlot.yAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged),
+          mQuickPlot.yAxis2, qOverload<const QCPRange&>(&QCPAxis::setRange));
 
   ui->plot->addGraph();
   ui->plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
   ui->plot->xAxis->grid()->setSubGridVisible(true);
   ui->plot->xAxis->setScaleType(QCPAxis::stLogarithmic);
   ui->plot->axisRect()->setupFullAxesBox();
-  connect(ui->plot->xAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged), ui->plot->xAxis2,
-          qOverload<const QCPRange&>(&QCPAxis::setRange));
-  connect(ui->plot->yAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged), ui->plot->yAxis2,
-          qOverload<const QCPRange&>(&QCPAxis::setRange));
+  connect(ui->plot->xAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged),
+          ui->plot->xAxis2, qOverload<const QCPRange&>(&QCPAxis::setRange));
+  connect(ui->plot->yAxis, qOverload<const QCPRange&>(&QCPAxis::rangeChanged),
+          ui->plot->yAxis2, qOverload<const QCPRange&>(&QCPAxis::setRange));
   ui->plot->xAxis->setNumberPrecision(0);
   ui->plot->xAxis->setNumberFormat("f");
   QSharedPointer<QCPAxisTickerLog> logTicker(new QCPAxisTickerLog);
@@ -79,6 +88,8 @@ void MainWindow::setupUi()
 
 void MainWindow::handleFinished()
 {
+  using namespace ranges;
+
   auto measurement = mAudio.getMeasurement();
 
   // Get measurement parameters
@@ -87,22 +98,33 @@ void MainWindow::handleFinished()
   const auto  length     = measurement.length;
   const auto  sampleRate = measurement.sample_rate;
 
-  // Configure input buffer & stream
-  spdlog::info("Reference signal: {} samples", measurement.reference_signal.size());
-  spdlog::info("Measured signal: {} samples", measurement.measured_signal.size());
+  // Compute sample delay between measured and reference signals
+  auto sample_delay =
+      TimeDelay::estimate(measurement.reference_signal, measurement.measured_signal,
+                          0.5 * sampleRate, TimeDelay::CrossCorrelation);
+  spdlog::info("Estimated delay: {} samples / {} ms", sample_delay,
+               (1000.0 * sample_delay) / sampleRate);
 
-  auto       input_ft = fft::r2c(measurement.measured_signal);
-  const auto n        = input_ft.size();
+  // Shifts both reference and measured signals according to sample
+  measurement.reference_signal.insert(measurement.reference_signal.begin(), sample_delay,
+                                      0.f);
+  measurement.measured_signal.insert(measurement.measured_signal.end(), sample_delay,
+                                     0.f);
+
+  auto reference_ft = fft::r2c(measurement.reference_signal);
+  auto measured_ft  = fft::r2c(measurement.measured_signal);
+
+  const auto n = measured_ft.size();
   qDebug() << "FFT size:" << n;
 
   constexpr float sensitivitydB = 4.6889;
 
   std::vector<float> input_spl_ft(n);
 
-  std::transform(std::execution::par, input_ft.begin(), input_ft.end(), input_spl_ft.begin(),
-                 [&](const auto& a) {
+  std::transform(std::execution::par, measured_ft.begin(), measured_ft.end(),
+                 input_spl_ft.begin(), [&](const auto& a) {
                    const float normalized_magnitude = std::abs(a) / n;
-                   const float dbfs                 = 20 * std::log10(normalized_magnitude);
+                   const float dbfs = 20 * std::log10(normalized_magnitude);
                    return 120 + dbfs - sensitivitydB;
                  });
 
@@ -149,12 +171,14 @@ void MainWindow::handleFinished()
   }
 
   std::vector<float> input_f_ft(n);
-  std::generate(input_f_ft.begin(), input_f_ft.end(),
-                [&, k = 0]() mutable { return k++ * 2 * static_cast<float>(sampleRate) / n; });
+  std::generate(input_f_ft.begin(), input_f_ft.end(), [&, k = 0]() mutable {
+    return k++ * 2 * static_cast<float>(sampleRate) / n;
+  });
 
   auto graph = ui->plot->addGraph();
-  graph->setData(QVector<double>{input_smoothed_spl_f_ft.begin(), input_smoothed_spl_f_ft.end()},
-                 QVector<double>{input_smoothed_spl_ft.begin(), input_smoothed_spl_ft.end()}, true);
+  graph->setData(
+      QVector<double>{input_smoothed_spl_f_ft.begin(), input_smoothed_spl_f_ft.end()},
+      QVector<double>{input_smoothed_spl_ft.begin(), input_smoothed_spl_ft.end()}, true);
   graph->rescaleAxes();
   /*ui->plot->graph(1)->setData(QVector<double>::fromStdVector(data_f),
                               QVector<double>::fromStdVector(data_spl), true);*/
@@ -162,46 +186,41 @@ void MainWindow::handleFinished()
   ui->plot->xAxis->setRange(f0, ff);
   ui->plot->replot();
 
-  // Reference signal's fft
-  auto ref_fft = fft::r2c(measurement.reference_signal);
-
   std::vector<float> reference_signal_t(measurement.reference_signal.size());
   std::iota(reference_signal_t.begin(), reference_signal_t.end(), 0.f);
 
   mQuickPlot.graph(0)->data().clear();
   mQuickPlot.graph(0)->addData(
       QVector<double>{reference_signal_t.begin(), reference_signal_t.end()},
-      QVector<double>{measurement.reference_signal.begin(), measurement.reference_signal.end()});
+      QVector<double>{measurement.reference_signal.begin(),
+                      measurement.reference_signal.end()});
+  mQuickPlot.graph(1)->data().clear();
+  mQuickPlot.graph(1)->addData(
+      QVector<double>{reference_signal_t.begin(), reference_signal_t.end()},
+      QVector<double>{measurement.measured_signal.begin(),
+                      measurement.measured_signal.end()});
   mQuickPlot.rescaleAxes();
   mQuickPlot.replot();
   mQuickPlot.show();
 
-  std::vector<std::complex<float>> input_impulse_ft, input_impulse_2_ft;
+  std::vector<std::complex<float>> impulse_ft(measured_ft.size());
 
-  for (const auto& [input_c, ref_c] : ranges::zip_view(input_ft, ref_fft)) {
-    input_impulse_ft.push_back(input_c / ref_c);
-    input_impulse_2_ft.push_back(input_c);
-  }
-  auto input_impulse_ts   = fft::c2r(input_impulse_ft);
-  auto input_impulse_2_ts = fft::c2r(input_impulse_2_ft);
+  std::transform(
+      std::execution::seq, measured_ft.begin(), measured_ft.end(), reference_ft.begin(),
+      impulse_ft.begin(),
+      [](const auto& measured, const auto& reference) { return measured / reference; });
+  auto impulse_ts = fft::c2r(impulse_ft);
 
-  std::vector<float> input_impulse_t_ts(input_impulse_ts.size());
-  std::generate(input_impulse_t_ts.begin(), input_impulse_t_ts.end(),
+  std::vector<float> impulse_t_ts(impulse_ts.size());
+  std::generate(impulse_t_ts.begin(), impulse_t_ts.end(),
                 [&, k = 0]() mutable { return k++ / static_cast<float>(sampleRate); });
 
-  /*ui->plot2->clearGraphs();
+  ui->plot2->clearGraphs();
   ui->plot2->addGraph();
-  ui->plot2->graph(0)->addData(
-      QVector<double>{input_impulse_t_ts.begin(), input_impulse_t_ts.end()},
-      QVector<double>{input_impulse_ts.begin(), input_impulse_ts.end()});
+  ui->plot2->graph(0)->addData(QVector<double>{impulse_t_ts.begin(), impulse_t_ts.end()},
+                               QVector<double>{impulse_ts.begin(), impulse_ts.end()});
   ui->plot2->graph(0)->rescaleAxes();
-  ui->plot2->addGraph();
-  ui->plot2->graph(1)->addData(
-      QVector<double>{input_impulse_t_ts.begin(), input_impulse_t_ts.end()},
-      QVector<double>{input_impulse_2_ts.begin(), input_impulse_2_ts.end()});
-  ui->plot2->graph(1)->rescaleAxes();
-  ui->plot2->graph(1)->setPen({Qt::red});
-  ui->plot2->replot();*/
+  ui->plot2->replot();
 
   // Restore ui
   ui->grpMeasParams->setEnabled(true);
@@ -229,7 +248,8 @@ void MainWindow::updateMeasurementDuration()
   const auto length     = ui->eLength->currentData().toUInt();
 
   // Duration [s] = Length [samples] / SampleRate [samples/s]
-  ui->lvDuration->setText(QString::number(static_cast<double>(length) / sampleRate, 'f', 1) + " s");
+  ui->lvDuration->setText(
+      QString::number(static_cast<double>(length) / sampleRate, 'f', 1) + " s");
 }
 
 void MainWindow::on_eStartFreq_valueChanged(int f0)

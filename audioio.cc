@@ -30,16 +30,10 @@ void AudioData::init(AudioIO*    parent_,
   silence_length        = silence_length_;
   length                = length_;
   sample_rate           = sample_rate_;
-  if (length + silence_length != data_measured.capacity()) {
-    data_measured.clear();
-    data_measured.reserve(length + silence_length);
-    data_reference.clear();
-    data_reference.reserve(length + silence_length);
-  } else {
-    // Resize without changing capacity
-    data_measured.resize(0);
-    data_reference.resize(0);
-  }
+  data_measured.clear();
+  data_measured.reserve(length + silence_length);
+  data_reference.clear();
+  data_reference.reserve(length + silence_length);
 
   sweep.f0        = f0_;
   sweep.ff        = ff_;
@@ -85,9 +79,10 @@ static int audioCallback(const void*   input_buffer,
   for (std::size_t i = 0; i < samples_to_process; i++) {
     float sample = 0;
     if (data->index + i < data->length) {
-      sample = data->sweep.amplitude *
+      const auto sweep_i = data->index + i;
+      sample             = data->sweep.amplitude *
                std::sin(2 * std::numbers::pi_v<float> * data->sweep.f0 *
-                        ((std::pow(data->sweep.k, (data->index + i) / data->sample_rate) - 1) /
+                        ((std::pow(data->sweep.k, sweep_i / data->sample_rate) - 1) /
                          data->sweep.log_k));
     }
     for (std::size_t c = 0; c < data->output_channels_count; c++)
@@ -128,29 +123,34 @@ AudioIO::AudioIO()
   auto inputDeviceInfo  = Pa_GetDeviceInfo(Pa_GetDefaultInputDevice());
   auto outputDeviceInfo = Pa_GetDeviceInfo(Pa_GetDefaultOutputDevice());
 
-  spdlog::info("input: low {} ms, high {} ms", 1000 * inputDeviceInfo->defaultLowInputLatency,
+  spdlog::info("input: low {} ms, high {} ms",
+               1000 * inputDeviceInfo->defaultLowInputLatency,
                1000 * inputDeviceInfo->defaultHighInputLatency);
-  spdlog::info("output: low {} ms, high {} ms", 1000 * outputDeviceInfo->defaultLowOutputLatency,
+  spdlog::info("output: low {} ms, high {} ms",
+               1000 * outputDeviceInfo->defaultLowOutputLatency,
                1000 * outputDeviceInfo->defaultHighOutputLatency);
 
-  auto inputParameters = PaStreamParameters{.device           = Pa_GetDefaultInputDevice(),
-                                            .channelCount     = inputDeviceInfo->maxInputChannels,
-                                            .sampleFormat     = paFloat32,
-                                            .suggestedLatency = 0,
-                                            .hostApiSpecificStreamInfo = nullptr};
+  auto inputParameters =
+      PaStreamParameters{.device                    = Pa_GetDefaultInputDevice(),
+                         .channelCount              = inputDeviceInfo->maxInputChannels,
+                         .sampleFormat              = paFloat32,
+                         .suggestedLatency          = 0,
+                         .hostApiSpecificStreamInfo = nullptr};
 
-  auto outputParameters = PaStreamParameters{.device       = Pa_GetDefaultOutputDevice(),
-                                             .channelCount = outputDeviceInfo->maxOutputChannels,
-                                             .sampleFormat = paFloat32,
-                                             .suggestedLatency          = 0,
-                                             .hostApiSpecificStreamInfo = nullptr};
+  auto outputParameters =
+      PaStreamParameters{.device                    = Pa_GetDefaultOutputDevice(),
+                         .channelCount              = outputDeviceInfo->maxOutputChannels,
+                         .sampleFormat              = paFloat32,
+                         .suggestedLatency          = 0,
+                         .hostApiSpecificStreamInfo = nullptr};
 
   auto step_init = std::chrono::high_resolution_clock::now();
 
   for (auto sampleRate : allSampleRates) {
     PaStream* stream;
     err = Pa_OpenStream(
-        &stream, &inputParameters, &outputParameters, sampleRate, framesPerBuffer, paClipOff,
+        &stream, &inputParameters, &outputParameters, sampleRate, framesPerBuffer,
+        paClipOff,
         [](const void*, void*, unsigned long, const PaStreamCallbackTimeInfo*,
            PaStreamCallbackFlags, void*) -> int { return paContinue; },
         nullptr);
@@ -167,10 +167,10 @@ AudioIO::AudioIO()
     Pa_CloseStream(stream);
   }
 
-  auto t1 =
-      mSupportedSampleRates |
-      ranges::views::transform([](float sampleRate) { return fmt::format("{:.0f}", sampleRate); }) |
-      ranges::to_vector;
+  auto t1 = mSupportedSampleRates | ranges::views::transform([](float sampleRate) {
+              return fmt::format("{:.0f}", sampleRate);
+            }) |
+            ranges::to_vector;
   auto sSR = t1 | ranges::views::join(", ") | ranges::to<std::string>;
 
   spdlog::info("Supported sample rates: {}", sSR);
@@ -180,10 +180,10 @@ AudioIO::AudioIO()
   PaStream* stream;
 
   err = Pa_OpenStream(
-      &stream, &inputParameters, &outputParameters, mSupportedSampleRates.back(), framesPerBuffer,
-      paClipOff,
-      [](const void*, void*, unsigned long, const PaStreamCallbackTimeInfo*, PaStreamCallbackFlags,
-         void*) -> int { return paContinue; },
+      &stream, &inputParameters, &outputParameters, mSupportedSampleRates.back(),
+      framesPerBuffer, paClipOff,
+      [](const void*, void*, unsigned long, const PaStreamCallbackTimeInfo*,
+         PaStreamCallbackFlags, void*) -> int { return paContinue; },
       nullptr);
   if (err != paNoError) {
     spdlog::error("Pa_OpenStream error #{}: {} ", err, Pa_GetErrorText(err));
@@ -193,9 +193,10 @@ AudioIO::AudioIO()
   const PaStreamInfo* streamInfo;
   streamInfo = Pa_GetStreamInfo(stream);
 
-  spdlog::info("Using input device #{} ({}, {})", inputParameters.device, inputDeviceInfo->name,
-               Pa_GetHostApiInfo(inputDeviceInfo->hostApi)->name);
-  spdlog::info("Using output device #{} ({}, {})", outputParameters.device, outputDeviceInfo->name,
+  spdlog::info("Using input device #{} ({}, {})", inputParameters.device,
+               inputDeviceInfo->name, Pa_GetHostApiInfo(inputDeviceInfo->hostApi)->name);
+  spdlog::info("Using output device #{} ({}, {})", outputParameters.device,
+               outputDeviceInfo->name,
                Pa_GetHostApiInfo(outputDeviceInfo->hostApi)->name);
 
   err = Pa_CloseStream(stream);
@@ -209,9 +210,11 @@ AudioIO::AudioIO()
   mInitSuccessful = true;
 
   spdlog::info(
-      "Initialized in {:.2f} ms: init {:.2f} ms + sample rates {:.2f} ms + latency {:.2f} ms",
+      "Initialized in {:.2f} ms: init {:.2f} ms + sample rates {:.2f} ms + latency "
+      "{:.2f} ms",
       (step_latency - start).count() / 1000000., (step_init - start).count() / 1000000.,
-      (step_ssr - step_init).count() / 1000000., (step_latency - step_ssr).count() / 1000000.);
+      (step_ssr - step_init).count() / 1000000.,
+      (step_latency - step_ssr).count() / 1000000.);
 }
 
 AudioIO::~AudioIO()
@@ -254,17 +257,17 @@ void AudioIO::startSweep(float       f0,
   auto outputDeviceInfo = Pa_GetDeviceInfo(Pa_GetDefaultOutputDevice());
 
   auto inputParameters =
-      PaStreamParameters{.device                    = Pa_GetDefaultInputDevice(),
-                         .channelCount              = 1,
-                         .sampleFormat              = paFloat32,
-                         .suggestedLatency          = inputDeviceInfo->defaultLowInputLatency,
+      PaStreamParameters{.device           = Pa_GetDefaultInputDevice(),
+                         .channelCount     = 1,
+                         .sampleFormat     = paFloat32,
+                         .suggestedLatency = inputDeviceInfo->defaultLowInputLatency,
                          .hostApiSpecificStreamInfo = nullptr};
 
   auto outputParameters =
-      PaStreamParameters{.device                    = Pa_GetDefaultOutputDevice(),
-                         .channelCount              = 2,
-                         .sampleFormat              = paFloat32,
-                         .suggestedLatency          = outputDeviceInfo->defaultLowOutputLatency,
+      PaStreamParameters{.device           = Pa_GetDefaultOutputDevice(),
+                         .channelCount     = 2,
+                         .sampleFormat     = paFloat32,
+                         .suggestedLatency = outputDeviceInfo->defaultLowOutputLatency,
                          .hostApiSpecificStreamInfo = nullptr};
 
   // Measure latency
@@ -295,8 +298,9 @@ void AudioIO::startSweep(float       f0,
                outputLatency * 1000);
 
   // Configure audio data
-  mData.init(this, 2, length, (inputLatency + outputLatency) * sampleRate, sampleRate, f0, ff,
-             std::pow(10, volumeDBFS / 20.));
+  // Silence = 100ms + input & output latency
+  mData.init(this, 2, length, (0.1 + inputLatency + outputLatency) * sampleRate,
+             sampleRate, f0, ff, std::pow(10, volumeDBFS / 20.));
 
   // Configure stream
   PaError err;
@@ -312,7 +316,8 @@ void AudioIO::startSweep(float       f0,
     static_cast<AudioData*>(userData)->parent->onAudioFinished();
   });
   if (err != paNoError) {
-    spdlog::error("Pa_SetStreamFinishedCallback error #{}: {} ", err, Pa_GetErrorText(err));
+    spdlog::error("Pa_SetStreamFinishedCallback error #{}: {} ", err,
+                  Pa_GetErrorText(err));
     return;
   }
 

@@ -29,7 +29,8 @@ target_sources(Audio PRIVATE
   fft.cc
   audioio.hh
   audioio.cc
-  paex_record.c
+  timedelay.hh
+  timedelay.cc
 )
 
 ##### Compilation options
