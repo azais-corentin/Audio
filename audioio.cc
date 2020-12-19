@@ -3,44 +3,20 @@
 #include <portaudio.h>
 #include <spdlog/spdlog.h>
 #include <range/v3/action/join.hpp>
-#include <range/v3/to_container.hpp>
+#include <range/v3/range/conversion.hpp>
 #include <range/v3/view/join.hpp>
 #include <range/v3/view/transform.hpp>
 
 #include <chrono>
+#include <concepts>
 #include <memory>
 #include <numbers>
 #include <vector>
 
+namespace Audio {
+
 constexpr const float allSampleRates[] = {8000,  11025, 16000, 22050,  44100,
                                           48000, 88200, 96000, 176400, 192000};
-
-void AudioData::init(AudioIO*    parent_,
-                     std::size_t output_channels_count_,
-                     std::size_t length_,
-                     std::size_t silence_length_,
-                     float       sample_rate_,
-                     float       f0_,
-                     float       ff_,
-                     float       amplitude_)
-{
-  parent                = parent_;
-  output_channels_count = output_channels_count_;
-  index                 = 0;
-  silence_length        = silence_length_;
-  length                = length_;
-  sample_rate           = sample_rate_;
-  data_measured.clear();
-  data_measured.reserve(length + silence_length);
-  data_reference.clear();
-  data_reference.reserve(length + silence_length);
-
-  sweep.f0        = f0_;
-  sweep.ff        = ff_;
-  sweep.amplitude = amplitude_;
-  sweep.k         = std::pow(ff_ / f0_, sample_rate / length);
-  sweep.log_k     = std::log(sweep.k);
-}
 
 static int audioCallback(const void*   input_buffer,
                          void*         output_buffer,
@@ -53,51 +29,50 @@ static int audioCallback(const void*   input_buffer,
   auto ro_mic     = static_cast<const float*>(input_buffer);
   auto wo_speaker = static_cast<float*>(output_buffer);
 
-  PaStreamCallbackResult state;
-  std::size_t            samples_to_process;
-  std::size_t            samples_left = data->length + data->silence_length - data->index;
+  return std::visit(
+      [&](auto& generator) {
+        PaStreamCallbackResult state;
+        std::size_t            samples_to_process;
+        std::size_t            samples_left =
+            generator.length() + data->silence_length - data->index;
 
-  if (samples_left < samples_per_buffer) {
-    samples_to_process = samples_left;
-    state              = paComplete;
-    spdlog::info("Stream completed!");
-  } else {
-    samples_to_process = samples_per_buffer;
-    state              = paContinue;
-  }
+        if (samples_left < samples_per_buffer) {
+          samples_to_process = samples_left;
+          state              = paComplete;
+        } else {
+          samples_to_process = samples_per_buffer;
+          state              = paContinue;
+        }
 
-  // Read from measured signal and write to AudioData
-  if (input_buffer == nullptr) {
-    for (std::size_t i = 0; i < samples_to_process; i++)
-      data->data_measured.push_back(0);
-  } else {
-    for (std::size_t i = 0; i < samples_to_process; i++)
-      data->data_measured.push_back(*ro_mic++);
-  }
+        // Read from measured signal and write to AudioData
+        if (input_buffer == nullptr) {
+          for (std::size_t i = 0; i < samples_to_process; i++)
+            data->data_measured.push_back(0);
+        } else {
+          for (std::size_t i = 0; i < samples_to_process; i++)
+            data->data_measured.push_back(*ro_mic++);
+        }
 
-  // Write reference signal to speaker & AudioData
-  for (std::size_t i = 0; i < samples_to_process; i++) {
-    float sample = 0;
-    if (data->index + i < data->length) {
-      const auto sweep_i = data->index + i;
-      sample             = data->sweep.amplitude *
-               std::sin(2 * std::numbers::pi_v<float> * data->sweep.f0 *
-                        ((std::pow(data->sweep.k, sweep_i / data->sample_rate) - 1) /
-                         data->sweep.log_k));
-    }
-    for (std::size_t c = 0; c < data->output_channels_count; c++)
-      *wo_speaker++ = sample;
-    data->data_reference.push_back(sample);
-  }
+        // Write reference signal to speaker & AudioData
+        for (std::size_t i = 0; i < samples_to_process; i++) {
+          std::size_t index  = data->index + i;
+          float       sample = data->amplitude * generator.sample(index);
 
-  if (state == paComplete) {
-    // Always output silence at the end
-    /*for (std::size_t c = 0; c < data->output_channels_count; c++)
-     *wo_speaker++ = 0;*/
-  }
+          data->data_reference.push_back(sample);
+          for (std::size_t c = 0; c < data->output_channels_count; c++)
+            *wo_speaker++ = sample;
+        }
 
-  data->index += samples_to_process;
-  return state;
+        if (state == paComplete) {
+          // Always output silence at the end
+          /*for (std::size_t c = 0; c < data->output_channels_count; c++)
+           *wo_speaker++ = 0;*/
+        }
+
+        data->index += samples_to_process;
+        return state;
+      },
+      data->generator);
 }
 
 template <double PaDeviceInfo::*m>
@@ -232,7 +207,7 @@ const std::vector<float>& AudioIO::supportedSampleRates()
 void AudioIO::startSweep(float       f0,
                          float       ff,
                          std::size_t length,
-                         uint32_t    sampleRate,
+                         std::size_t sampleRate,
                          float       volumeDBFS)
 {
   // Validate sample rate
@@ -297,10 +272,14 @@ void AudioIO::startSweep(float       f0,
   spdlog::info("Measured latency: input {} ms / ouput {} ms", inputLatency * 1000,
                outputLatency * 1000);
 
+  // Remove 50 ms to the length to allow reflections to get into the measured signals
+  length -= 0.05 * sampleRate;
+
   // Configure audio data
   // Silence = 100ms + input & output latency
-  mData.init(this, 2, length, (0.1 + inputLatency + outputLatency) * sampleRate,
-             sampleRate, f0, ff, std::pow(10, volumeDBFS / 20.));
+  mData.init<Generator::SynchronizedSweptSine>(
+      this, 2, (0.1 + inputLatency + outputLatency) * sampleRate,
+      std::pow(10, volumeDBFS / 20.), f0, ff, length, sampleRate);
 
   // Configure stream
   PaError err;
@@ -350,8 +329,7 @@ MeasurementData AudioIO::getMeasurement()
   return MeasurementData{
       .reference_signal = mData.data_reference,
       .measured_signal  = mData.data_measured,
-      .sample_rate      = mData.sample_rate,
-      .length           = mData.length,
+      .generator        = mData.generator,
   };
 }
 
@@ -364,3 +342,5 @@ void AudioIO::onAudioFinished()
 
   emit audioFinished();
 }
+
+}  // namespace Audio

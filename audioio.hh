@@ -1,10 +1,15 @@
 #pragma once
 
+#include "generators/generators.hh"
+
 #include <QObject>
 
 #include <vector>
 
 typedef void PaStream;
+
+namespace Audio {
+
 class AudioIO;
 
 struct SweepParameters {
@@ -18,26 +23,37 @@ struct AudioData {
   AudioIO*           parent;
   std::size_t        output_channels_count;
   std::size_t        index;
-  std::size_t        silence_length, length;
-  float              sample_rate;
-  std::vector<float> data_measured;   // Measured signal, from the microphone
-  std::vector<float> data_reference;  // Reference signal, going to the speakers
-  SweepParameters    sweep;
+  std::size_t        silence_length;
+  float              amplitude;
+  std::vector<float> data_measured;   ///< Measured signal, from the microphone
+  std::vector<float> data_reference;  ///< Reference signal, going to the speakers
+  Generator::Base    generator;
 
+  template <typename GeneratorT, typename... Args>
   void init(AudioIO*    parent_,
             std::size_t output_channels_count_,
-            std::size_t length_,
             std::size_t silence_length_,
-            float       sample_rate_,
-            float       f0_,
-            float       ff_,
-            float       amplitude_);
+            float       amplitude_,
+            Args&&... args)
+  {
+    generator.emplace<GeneratorT>(std::forward<Args>(args)...);
+    parent                = parent_;
+    output_channels_count = output_channels_count_;
+    index                 = 0;
+    silence_length        = silence_length_;
+    amplitude             = amplitude_;
+    auto length = std::visit([](const auto& g) { return g.length(); }, generator);
+    data_measured.clear();
+    data_measured.reserve(length + silence_length);
+    data_reference.clear();
+    data_reference.reserve(length + silence_length);
+    spdlog::info("length + silence_length: {}", length + silence_length);
+  }
 };
 
 struct MeasurementData {
   std::vector<float>&reference_signal, &measured_signal;
-  float              sample_rate;
-  std::size_t        length;
+  Generator::Base    generator;
 };
 
 class AudioIO : public QObject {
@@ -49,7 +65,13 @@ class AudioIO : public QObject {
 
   const std::vector<float>& supportedSampleRates();
 
-  void startSweep(float f0, float ff, std::size_t length, uint32_t sampleRate, float volumeDBFS);
+  void start(std::unique_ptr<Generator::Base> generator, float volumeDBFS);
+
+  void startSweep(float       f0,
+                  float       ff,
+                  std::size_t length,
+                  std::size_t sampleRate,
+                  float       volumeDBFS);
 
   PaStream* getStream();
 
@@ -69,3 +91,5 @@ class AudioIO : public QObject {
 
   std::vector<float> mSupportedSampleRates;
 };
+
+}  // namespace Audio

@@ -1,5 +1,7 @@
 #include "mainwindow.hh"
 #include "./ui_mainwindow.h"
+#include "generators/generators.hh"
+#include "interface/QtAwesome/QtAwesome.h"
 #include "timedelay.hh"
 
 #include <fftw3.h>
@@ -7,7 +9,7 @@
 #include <QDebug>
 #include <fft.hh>
 #include <range/v3/action/drop.hpp>
-#include <range/v3/to_container.hpp>
+#include <range/v3/range/conversion.hpp>
 #include <range/v3/view/drop.hpp>
 #include <range/v3/view/drop_last.hpp>
 #include <range/v3/view/zip.hpp>
@@ -17,8 +19,13 @@
 #include <execution>
 #include <numbers>
 
+namespace Audio {
+
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWindow)
 {
+  mAwesome = new QtAwesome(this);
+  mAwesome->initFontAwesome();
+
   ui->setupUi(this);
   setupUi();
 
@@ -66,7 +73,7 @@ void MainWindow::setupUi()
   for (auto sampleRate : mAudio.supportedSampleRates()) {
     ui->eSampleRate->addItem(QString::number(sampleRate), sampleRate);
   }
-  ui->eSampleRate->setCurrentIndex(ui->eSampleRate->count() - 1);
+  ui->eSampleRate->setCurrentText("48000");
 
   // Length
   ui->eLength->addItem("128k", (1u << 17u));
@@ -93,29 +100,75 @@ void MainWindow::handleFinished()
   auto measurement = mAudio.getMeasurement();
 
   // Get measurement parameters
-  const float f0         = ui->eStartFreq->value();
-  const float ff         = ui->eEndFreq->value();
-  const auto  length     = measurement.length;
-  const auto  sampleRate = measurement.sample_rate;
+  const float       f0          = ui->eStartFreq->value();
+  const float       ff          = ui->eEndFreq->value();
+  const std::size_t full_length = ui->eLength->currentData().toUInt();
+  const std::size_t length =
+      std::visit([](const auto& g) { return g.length(); }, measurement.generator);
+  const std::size_t sample_rate =
+      std::visit([](const auto& g) { return g.sample_rate(); }, measurement.generator);
+  const float duration =
+      std::visit([](const auto& g) { return g.duration(); }, measurement.generator);
+
+  spdlog::info("Received measurement:");
+  spdlog::info("length {}, sample_rate {}, duration {} s", length, sample_rate, duration);
+  spdlog::info("reference: length {}", measurement.reference_signal.size());
+  spdlog::info("measured: length {}", measurement.measured_signal.size());
 
   // Compute sample delay between measured and reference signals
   auto sample_delay =
       TimeDelay::estimate(measurement.reference_signal, measurement.measured_signal,
-                          0.5 * sampleRate, TimeDelay::CrossCorrelation);
+                          0.5 * sample_rate, TimeDelay::CrossCorrelation);
+  if (sample_delay < 0)
+    sample_delay = 0;
   spdlog::info("Estimated delay: {} samples / {} ms", sample_delay,
-               (1000.0 * sample_delay) / sampleRate);
+               (1000.0 * sample_delay) / sample_rate);
 
   // Shifts both reference and measured signals according to sample
-  measurement.reference_signal.insert(measurement.reference_signal.begin(), sample_delay,
-                                      0.f);
-  measurement.measured_signal.insert(measurement.measured_signal.end(), sample_delay,
-                                     0.f);
+  measurement.reference_signal.resize(full_length);
+  // Remove the first n samples
+  measurement.measured_signal.erase(
+      measurement.measured_signal.begin(),
+      std::next(measurement.measured_signal.begin(), sample_delay));
+  measurement.measured_signal.resize(full_length);
+
+  auto Fy = fft::r2c(measurement.measured_signal);
+  auto xtilde =
+      std::get<Generator::SynchronizedSweptSine>(measurement.generator).xtilde();
+
+  spdlog::info("xtilde::size {}", xtilde.size());
+  spdlog::info("Fy::size {}", Fy.size());
+
+  std::vector<std::complex<float>> H(Fy.size());
+  std::transform(Fy.begin(), Fy.end(), xtilde.begin(), H.begin(),
+                 [](const auto& Fy, const auto& xtilde) { return Fy * xtilde; });
+
+  auto h = fft::c2r(H);
+
+  spdlog::info("h::size {}", h.size());
+
+  std::vector<float> signal_t(h.size());
+  std::generate(signal_t.begin(), signal_t.end(),
+                [&, n = -1.f / sample_rate]() mutable { return n += 1.f / sample_rate; });
+
+  mQuickPlot.graph(0)->data().clear();
+  mQuickPlot.graph(0)->addData(QVector<double>{signal_t.begin(), signal_t.end()},
+                               QVector<double>{h.begin(), h.end()});
+  mQuickPlot.graph(1)->data().clear();
+  /*mQuickPlot.graph(1)->addData(QVector<double>{signal_t.begin(), signal_t.end()},
+                               QVector<double>{measurement.measured_signal.begin(),
+                                               measurement.measured_signal.end()});*/
+  mQuickPlot.rescaleAxes();
+  mQuickPlot.replot();
+  mQuickPlot.show();
+
+  spdlog::info("shifted reference: length {}", measurement.reference_signal.size());
+  spdlog::info("shifted measured: length {}", measurement.measured_signal.size());
 
   auto reference_ft = fft::r2c(measurement.reference_signal);
   auto measured_ft  = fft::r2c(measurement.measured_signal);
 
   const auto n = measured_ft.size();
-  qDebug() << "FFT size:" << n;
 
   constexpr float sensitivitydB = 4.6889;
 
@@ -145,7 +198,7 @@ void MainWindow::handleFinished()
   std::vector<float> input_smoothed_spl_f_ft(n), input_smoothed_spl_ft(n);
 
   for (std::size_t k = 0; k < input_spl_ft.size(); k++) {
-    const float f = k * 2 * static_cast<float>(sampleRate) / n;
+    const float f = k * 2 * static_cast<float>(sample_rate) / n;
 
     if (f > ff)
       break;
@@ -172,7 +225,7 @@ void MainWindow::handleFinished()
 
   std::vector<float> input_f_ft(n);
   std::generate(input_f_ft.begin(), input_f_ft.end(), [&, k = 0]() mutable {
-    return k++ * 2 * static_cast<float>(sampleRate) / n;
+    return k++ * 2 * static_cast<float>(sample_rate) / n;
   });
 
   auto graph = ui->plot->addGraph();
@@ -186,23 +239,6 @@ void MainWindow::handleFinished()
   ui->plot->xAxis->setRange(f0, ff);
   ui->plot->replot();
 
-  std::vector<float> reference_signal_t(measurement.reference_signal.size());
-  std::iota(reference_signal_t.begin(), reference_signal_t.end(), 0.f);
-
-  mQuickPlot.graph(0)->data().clear();
-  mQuickPlot.graph(0)->addData(
-      QVector<double>{reference_signal_t.begin(), reference_signal_t.end()},
-      QVector<double>{measurement.reference_signal.begin(),
-                      measurement.reference_signal.end()});
-  mQuickPlot.graph(1)->data().clear();
-  mQuickPlot.graph(1)->addData(
-      QVector<double>{reference_signal_t.begin(), reference_signal_t.end()},
-      QVector<double>{measurement.measured_signal.begin(),
-                      measurement.measured_signal.end()});
-  mQuickPlot.rescaleAxes();
-  mQuickPlot.replot();
-  mQuickPlot.show();
-
   std::vector<std::complex<float>> impulse_ft(measured_ft.size());
 
   std::transform(
@@ -213,7 +249,7 @@ void MainWindow::handleFinished()
 
   std::vector<float> impulse_t_ts(impulse_ts.size());
   std::generate(impulse_t_ts.begin(), impulse_t_ts.end(),
-                [&, k = 0]() mutable { return k++ / static_cast<float>(sampleRate); });
+                [&, k = 0]() mutable { return k++ / static_cast<float>(sample_rate); });
 
   ui->plot2->clearGraphs();
   ui->plot2->addGraph();
@@ -244,12 +280,16 @@ void MainWindow::on_bMeasure_clicked()
 
 void MainWindow::updateMeasurementDuration()
 {
-  const auto sampleRate = ui->eSampleRate->currentData().toInt();
-  const auto length     = ui->eLength->currentData().toUInt();
+  const auto sample_rate = ui->eSampleRate->currentData().toInt();
+  const auto length      = ui->eLength->currentData().toUInt();
 
-  // Duration [s] = Length [samples] / SampleRate [samples/s]
-  ui->lvDuration->setText(
-      QString::number(static_cast<double>(length) / sampleRate, 'f', 1) + " s");
+  auto generator = Generator::SynchronizedSweptSine(
+      ui->eStartFreq->value(), ui->eEndFreq->value(), length, sample_rate);
+
+  spdlog::info("l1: {} s", static_cast<float>(length) / sample_rate);
+  spdlog::info("l2: {} s", generator.duration());
+
+  ui->lvDuration->setText(QString::number(generator.duration(), 'f', 1) + " s");
 }
 
 void MainWindow::on_eStartFreq_valueChanged(int f0)
@@ -271,3 +311,5 @@ void MainWindow::on_eEndFreq_valueChanged(int ff)
 
   ui->plot->xAxis->setRange(f0, ff);
 }
+
+}  // namespace Audio

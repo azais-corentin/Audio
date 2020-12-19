@@ -1,17 +1,13 @@
 cmake_minimum_required(VERSION 3.18)
 
-#set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake
-#  CACHE STRING "Vcpkg toolchain file")
-
-message(STATUS "CMake ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}.${CMAKE_PATCH_VERSION}" )
+# Vcpkg as a submodule
+set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/vcpkg/scripts/buildsystems/vcpkg.cmake CACHE STRING "Vcpkg toolchain file")
 
 project(Audio
   VERSION 0.1.0
   DESCRIPTION "Audio in C++"
   HOMEPAGE_URL "https://github.com/Haellsigh/Audio"
   LANGUAGES CXX)
-
-message(STATUS ${CMAKE_TOOLCHAIN_FILE})
 
 # Qt MOC/UIC/RCC
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -33,17 +29,21 @@ target_sources(Audio PRIVATE
   timedelay.cc
 )
 
+add_subdirectory(interface)
+add_subdirectory(generators)
+add_subdirectory(utilities)
+
 ##### Compilation options
 # C++20
 target_compile_features(Audio PUBLIC cxx_std_20)
 set_target_properties(Audio PROPERTIES CXX_EXTENSIONS OFF)
 if (MSVC)
-  target_compile_options(Audio PUBLIC /std:c++latest /Zc:__cplusplus)
+  target_compile_options(Audio PUBLIC /Zc:__cplusplus)
 endif()
 # Enable Link Time Optimization if available
 include(CheckIPOSupported)
-check_ipo_supported(RESULT result)
-if(result)
+check_ipo_supported(RESULT ipo_supported)
+if(ipo_supported)
   set_target_properties(Audio PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
   message(STATUS "Enabled Link Time optimization")
 endif()
@@ -51,7 +51,7 @@ endif()
 if(MSVC)
   target_compile_options(Audio PRIVATE /W4)
 else()
-  target_compile_options(Audio PRIVATE -Wall -Wextra)
+  target_compile_options(Audio PRIVATE -Wall -Wextra -Wconversion -Wsign-conversion)
 endif()
 
 find_program(CCACHE_PROGRAM ccache)
@@ -63,7 +63,7 @@ endif()
 
 ##### Libraries
 # Qt
-find_package(Qt5 COMPONENTS Core Widgets Multimedia PrintSupport REQUIRED)
+find_package(Qt5 COMPONENTS Widgets Multimedia PrintSupport REQUIRED)
 target_link_libraries(Audio PRIVATE Qt5::Widgets Qt5::Multimedia Qt5::PrintSupport)
 
 # Thirdparty libraries
@@ -85,4 +85,4 @@ target_link_libraries(Audio PRIVATE spdlog::spdlog spdlog::spdlog_header_only)
 
 # PortAudio
 find_package(portaudio CONFIG REQUIRED)
-target_link_libraries(Audio PRIVATE portaudio portaudio_static)
+target_link_libraries(Audio PRIVATE portaudio)

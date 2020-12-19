@@ -1,18 +1,21 @@
 #pragma once
 
-#include <memory>
-#include <vector>
+#include "audioio.hh"
 
 #include <qcustomplot/qcustomplot.h>
 #include <QMainWindow>
 
-#include "audioio.hh"
+#include <memory>
+#include <vector>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
 class MainWindow;
 }
 QT_END_NAMESPACE
+class QtAwesome;
+
+namespace Audio {
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -35,7 +38,10 @@ class MainWindow : public QMainWindow {
 
  private:
   Ui::MainWindow* ui;
+  QtAwesome*      mAwesome;
 
   AudioIO     mAudio;
   QCustomPlot mQuickPlot;
 };
+
+}  // namespace Audio
