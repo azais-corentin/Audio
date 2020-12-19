@@ -11,7 +11,7 @@ set(CMAKE_AUTORCC ON)
 option(FontAwesomePro "Enable the pro icons" OFF)
 
 ##### Library
-add_library(QtAwesome "")
+add_library(QtAwesome STATIC "")
 target_sources(QtAwesome PRIVATE
     QtAwesome.h
     QtAwesome.cpp
@@ -47,8 +47,18 @@ endif()
 if(MSVC)
     target_compile_options(QtAwesome PRIVATE /W4)
 else()
-    target_compile_options(QtAwesome PRIVATE -Wall -Wextra)
+    target_compile_options(QtAwesome PRIVATE -Wall -Wextra -Wconversion -Wsign-conversion)
 endif()
+# CCache
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    message(STATUS "Enabled CCache")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    set(CMAKE_CUDA_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+endif()
+# MT library
+set_property(TARGET QtAwesome PROPERTY
+             MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 ##### Qt
 find_package(Qt5 COMPONENTS Widgets REQUIRED)
