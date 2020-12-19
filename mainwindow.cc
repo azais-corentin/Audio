@@ -1,9 +1,9 @@
 #include "mainwindow.hh"
 #include "./ui_mainwindow.h"
 #include "generators/generators.hh"
-#include "interface/QtAwesome/QtAwesome.h"
 #include "timedelay.hh"
 
+#include <QtAwesome/QtAwesome.h>
 #include <fftw3.h>
 #include <spdlog/spdlog.h>
 #include <QDebug>

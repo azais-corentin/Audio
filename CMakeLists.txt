@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 
 # Vcpkg as a submodule
-set(VCPKG_TARGET_TRIPLET "x64-windows-static")
+set(VCPKG_TARGET_TRIPLET "x64-windows")
 set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/vcpkg/scripts/buildsystems/vcpkg.cmake CACHE STRING "Vcpkg toolchain file")
 
 project(Audio
