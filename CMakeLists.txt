@@ -89,4 +89,4 @@ target_link_libraries(Audio PRIVATE spdlog::spdlog spdlog::spdlog_header_only)
 
 # PortAudio
 find_package(portaudio CONFIG REQUIRED)
-target_link_libraries(Audio PRIVATE portaudio_static)
+target_link_libraries(Audio PRIVATE portaudio)
