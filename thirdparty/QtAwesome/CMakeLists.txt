@@ -13,21 +13,21 @@ option(FontAwesomePro "Enable the pro icons" OFF)
 ##### Library
 add_library(QtAwesome "")
 target_sources(QtAwesome PRIVATE
-  QtAwesome.h
-  QtAwesome.cpp
-  QtAwesomeAnim.h
-  QtAwesomeAnim.cpp
+    QtAwesome.h
+    QtAwesome.cpp
+    QtAwesomeAnim.h
+    QtAwesomeAnim.cpp
 )
 
 target_include_directories(QtAwesome PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 if(FontAwesomePro)
-  target_sources(QtAwesome PRIVATE QtAwesomePro.qrc)
-  target_compile_definitions(QtAwesome PUBLIC FONT_AWESOME_PRO)
-  message(STATUS "Using FontAwesome Pro")
+    target_sources(QtAwesome PRIVATE QtAwesomePro.qrc)
+    target_compile_definitions(QtAwesome PUBLIC FONT_AWESOME_PRO)
+    message(STATUS "Using FontAwesome Pro")
 else()
-  target_sources(QtAwesome PRIVATE QtAwesomeFree.qrc)
-  message(STATUS "Using FontAwesome Free")
+    target_sources(QtAwesome PRIVATE QtAwesomeFree.qrc)
+    message(STATUS "Using FontAwesome Free")
 endif()
 
 ##### Compilation options
@@ -35,19 +35,19 @@ endif()
 target_compile_features(QtAwesome PRIVATE cxx_std_14)
 set_target_properties(QtAwesome PROPERTIES CXX_EXTENSIONS OFF)
 if (MSVC)
-  target_compile_options(QtAwesome PRIVATE /std:c++latest /Zc:__cplusplus)
+    target_compile_options(QtAwesome PRIVATE /std:c++latest /Zc:__cplusplus)
 endif()
 # Enable Link Time Optimization if available
 include(CheckIPOSupported)
 check_ipo_supported(RESULT result)
 if(result)
-  set_target_properties(QtAwesome PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+    set_target_properties(QtAwesome PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 # Warnings
 if(MSVC)
-  target_compile_options(QtAwesome PRIVATE /W4)
+    target_compile_options(QtAwesome PRIVATE /W4)
 else()
-  target_compile_options(QtAwesome PRIVATE -Wall -Wextra)
+    target_compile_options(QtAwesome PRIVATE -Wall -Wextra)
 endif()
 
 ##### Qt

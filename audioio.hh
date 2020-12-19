@@ -13,83 +13,75 @@ namespace Audio {
 class AudioIO;
 
 struct SweepParameters {
-  float f0, ff;
-  float amplitude;
+    float f0, ff;
+    float amplitude;
 
-  float k, log_k;
+    float k, log_k;
 };
 
 struct AudioData {
-  AudioIO*           parent;
-  std::size_t        output_channels_count;
-  std::size_t        index;
-  std::size_t        silence_length;
-  float              amplitude;
-  std::vector<float> data_measured;   ///< Measured signal, from the microphone
-  std::vector<float> data_reference;  ///< Reference signal, going to the speakers
-  Generator::Base    generator;
+    AudioIO *parent;
+    std::size_t output_channels_count;
+    std::size_t index;
+    std::size_t silence_length;
+    float amplitude;
+    std::vector<float> data_measured;  ///< Measured signal, from the microphone
+    std::vector<float> data_reference; ///< Reference signal, going to the speakers
+    Generator::Base generator;
 
-  template <typename GeneratorT, typename... Args>
-  void init(AudioIO*    parent_,
-            std::size_t output_channels_count_,
-            std::size_t silence_length_,
-            float       amplitude_,
-            Args&&... args)
-  {
-    generator.emplace<GeneratorT>(std::forward<Args>(args)...);
-    parent                = parent_;
-    output_channels_count = output_channels_count_;
-    index                 = 0;
-    silence_length        = silence_length_;
-    amplitude             = amplitude_;
-    auto length = std::visit([](const auto& g) { return g.length(); }, generator);
-    data_measured.clear();
-    data_measured.reserve(length + silence_length);
-    data_reference.clear();
-    data_reference.reserve(length + silence_length);
-    spdlog::info("length + silence_length: {}", length + silence_length);
-  }
+    template <typename GeneratorT, typename... Args>
+    void init(AudioIO *parent_, std::size_t output_channels_count_, std::size_t silence_length_, float amplitude_,
+              Args &&...args) {
+        generator.emplace<GeneratorT>(std::forward<Args>(args)...);
+        parent                = parent_;
+        output_channels_count = output_channels_count_;
+        index                 = 0;
+        silence_length        = silence_length_;
+        amplitude             = amplitude_;
+        auto length           = std::visit([](const auto &g) { return g.length(); }, generator);
+        data_measured.clear();
+        data_measured.reserve(length + silence_length);
+        data_reference.clear();
+        data_reference.reserve(length + silence_length);
+        spdlog::info("length + silence_length: {}", length + silence_length);
+    }
 };
 
 struct MeasurementData {
-  std::vector<float>&reference_signal, &measured_signal;
-  Generator::Base    generator;
+    std::vector<float> &reference_signal, &measured_signal;
+    Generator::Base generator;
 };
 
 class AudioIO : public QObject {
-  Q_OBJECT
+    Q_OBJECT
 
- public:
-  AudioIO();
-  ~AudioIO();
+  public:
+    AudioIO();
+    ~AudioIO();
 
-  const std::vector<float>& supportedSampleRates();
+    const std::vector<float> &supportedSampleRates();
 
-  void start(std::unique_ptr<Generator::Base> generator, float volumeDBFS);
+    void start(std::unique_ptr<Generator::Base> generator, float volumeDBFS);
 
-  void startSweep(float       f0,
-                  float       ff,
-                  std::size_t length,
-                  std::size_t sampleRate,
-                  float       volumeDBFS);
+    void startSweep(float f0, float ff, std::size_t length, std::size_t sampleRate, float volumeDBFS);
 
-  PaStream* getStream();
+    PaStream *getStream();
 
-  std::vector<float>& getReferenceData();
-  std::vector<float>& getMeasuredData();
-  MeasurementData     getMeasurement();
+    std::vector<float> &getReferenceData();
+    std::vector<float> &getMeasuredData();
+    MeasurementData getMeasurement();
 
-  void onAudioFinished();
+    void onAudioFinished();
 
- signals:
-  void audioFinished();
+  signals:
+    void audioFinished();
 
- private:
-  bool      mInitSuccessful = false;
-  AudioData mData;
-  PaStream* mStream = nullptr;
+  private:
+    bool mInitSuccessful = false;
+    AudioData mData;
+    PaStream *mStream = nullptr;
 
-  std::vector<float> mSupportedSampleRates;
+    std::vector<float> mSupportedSampleRates;
 };
 
-}  // namespace Audio
+} // namespace Audio

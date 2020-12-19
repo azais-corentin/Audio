@@ -5,10 +5,10 @@ set(VCPKG_TARGET_TRIPLET "x64-windows")
 set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/vcpkg/scripts/buildsystems/vcpkg.cmake CACHE STRING "Vcpkg toolchain file")
 
 project(Audio
-  VERSION 0.1.0
-  DESCRIPTION "Audio in C++"
-  HOMEPAGE_URL "https://github.com/Haellsigh/Audio"
-  LANGUAGES CXX)
+      VERSION 0.1.0
+      DESCRIPTION "Audio in C++"
+      HOMEPAGE_URL "https://github.com/Haellsigh/Audio"
+      LANGUAGES CXX)
 
 # Qt MOC/UIC/RCC
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -18,16 +18,16 @@ set(CMAKE_AUTORCC ON)
 
 add_executable(Audio "")
 target_sources(Audio PRIVATE
-  main.cc
-  mainwindow.cc
-  mainwindow.hh
-  mainwindow.ui
-  fft.hh
-  fft.cc
-  audioio.hh
-  audioio.cc
-  timedelay.hh
-  timedelay.cc
+      main.cc
+      mainwindow.cc
+      mainwindow.hh
+      mainwindow.ui
+      fft.hh
+      fft.cc
+      audioio.hh
+      audioio.cc
+      timedelay.hh
+      timedelay.cc
 )
 
 add_subdirectory(interface)
@@ -39,27 +39,27 @@ add_subdirectory(utilities)
 target_compile_features(Audio PUBLIC cxx_std_20)
 set_target_properties(Audio PROPERTIES CXX_EXTENSIONS OFF)
 if (MSVC)
-  target_compile_options(Audio PUBLIC /Zc:__cplusplus)
+    target_compile_options(Audio PUBLIC /Zc:__cplusplus)
 endif()
 # Enable Link Time Optimization if available
 include(CheckIPOSupported)
 check_ipo_supported(RESULT ipo_supported)
 if(ipo_supported)
-  set_target_properties(Audio PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
-  message(STATUS "Enabled Link Time optimization")
+    set_target_properties(Audio PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+    message(STATUS "Enabled Link Time optimization")
 endif()
 # Warnings
 if(MSVC)
-  target_compile_options(Audio PRIVATE /W4)
+    target_compile_options(Audio PRIVATE /W4)
 else()
-  target_compile_options(Audio PRIVATE -Wall -Wextra -Wconversion -Wsign-conversion)
+    target_compile_options(Audio PRIVATE -Wall -Wextra -Wconversion -Wsign-conversion)
 endif()
 # CCache
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
-  message(STATUS "Enabled CCache")
-  set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
-  set(CMAKE_CUDA_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    message(STATUS "Enabled CCache")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    set(CMAKE_CUDA_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
 endif()
 # MT library
 set_property(TARGET Audio PROPERTY

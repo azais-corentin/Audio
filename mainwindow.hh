@@ -2,8 +2,8 @@
 
 #include "audioio.hh"
 
-#include <qcustomplot/qcustomplot.h>
 #include <QMainWindow>
+#include <qcustomplot/qcustomplot.h>
 
 #include <memory>
 #include <vector>
@@ -18,30 +18,30 @@ class QtAwesome;
 namespace Audio {
 
 class MainWindow : public QMainWindow {
-  Q_OBJECT
+    Q_OBJECT
 
- public:
-  MainWindow(QWidget* parent = nullptr);
-  ~MainWindow();
+  public:
+    MainWindow(QWidget *parent = nullptr);
+    ~MainWindow();
 
-  void setupUi();
+    void setupUi();
 
- private slots:
-  void on_eStartFreq_valueChanged(int f0);
-  void on_eEndFreq_valueChanged(int ff);
-  void on_bMeasure_clicked();
+  private slots:
+    void on_eStartFreq_valueChanged(int f0);
+    void on_eEndFreq_valueChanged(int ff);
+    void on_bMeasure_clicked();
 
- private:
-  void updateMeasurementDuration();
+  private:
+    void updateMeasurementDuration();
 
-  void handleFinished();
+    void handleFinished();
 
- private:
-  Ui::MainWindow* ui;
-  QtAwesome*      mAwesome;
+  private:
+    Ui::MainWindow *ui;
+    QtAwesome *mAwesome;
 
-  AudioIO     mAudio;
-  QCustomPlot mQuickPlot;
+    AudioIO mAudio;
+    QCustomPlot mQuickPlot;
 };
 
-}  // namespace Audio
+} // namespace Audio

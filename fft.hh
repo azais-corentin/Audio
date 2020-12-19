@@ -6,19 +6,23 @@
 namespace Audio {
 
 class fft {
-  using fcomplex = std::complex<float>;
+    using fcomplex = std::complex<float>;
 
- public:
-  enum class Direction { Forward = -1, Backward = +1 };
+  public:
+    enum class Direction
+    {
+        Forward  = -1,
+        Backward = +1
+    };
 
- public:
-  // Forward
-  static std::vector<fcomplex> r2c(std::vector<float>& input);
+  public:
+    // Forward
+    static std::vector<fcomplex> r2c(std::vector<float> &input);
 
-  // Backward
-  static std::vector<float> c2r(std::vector<fcomplex>& input);
+    // Backward
+    static std::vector<float> c2r(std::vector<fcomplex> &input);
 
-  static std::vector<fcomplex> c2c(std::vector<fcomplex>& input, Direction d);
+    static std::vector<fcomplex> c2c(std::vector<fcomplex> &input, Direction d);
 };
 
-}  // namespace Audio
+} // namespace Audio
