@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.18)
 
-#set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake
-#  CACHE STRING "Vcpkg toolchain file")
+set(VCPKG_TARGET_TRIPLET "x64-windows-static")
+set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake
+  CACHE STRING "Vcpkg toolchain file")
 
 message(STATUS "CMake ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}.${CMAKE_PATCH_VERSION}" )
 
@@ -53,13 +54,16 @@ if(MSVC)
 else()
   target_compile_options(Audio PRIVATE -Wall -Wextra)
 endif()
-
+# CCache
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
   message(STATUS "Enabled CCache")
   set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
   set(CMAKE_CUDA_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
 endif()
+# MT library
+set_property(TARGET Audio PROPERTY
+             MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 ##### Libraries
 # Qt
@@ -85,4 +89,4 @@ target_link_libraries(Audio PRIVATE spdlog::spdlog spdlog::spdlog_header_only)
 
 # PortAudio
 find_package(portaudio CONFIG REQUIRED)
-target_link_libraries(Audio PRIVATE portaudio portaudio_static)
+target_link_libraries(Audio PRIVATE portaudio_static)
