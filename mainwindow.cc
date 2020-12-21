@@ -22,60 +22,96 @@
 namespace Audio {
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow) {
-    mAwesome = new QtAwesome(this);
-    mAwesome->initFontAwesome();
+    awesome_ = new QtAwesome(this);
+    awesome_->initFontAwesome();
 
     ui->setupUi(this);
     setupUi();
 
-    connect(&mAudio, &AudioIO::audio_finished, this, &MainWindow::handleFinished);
+    connect(&audio_, &AudioIO::audio_finished, this, &MainWindow::handle_finished);
+    connect(&audio_, &AudioIO::on_rta_data, this, &MainWindow::handle_rta_data);
 }
 
 MainWindow::~MainWindow() { delete ui; }
 
 void MainWindow::setupUi() {
-    mQuickPlot.addGraph();
-    mQuickPlot.addGraph();
-    mQuickPlot.graph(0)->setPen({Qt::blue});
-    mQuickPlot.graph(1)->setPen({Qt::red});
-    mQuickPlot.setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
-    mQuickPlot.xAxis->grid()->setSubGridVisible(true);
-    mQuickPlot.axisRect()->setupFullAxesBox();
-    connect(mQuickPlot.xAxis, qOverload<const QCPRange &>(&QCPAxis::rangeChanged), mQuickPlot.xAxis2,
-            qOverload<const QCPRange &>(&QCPAxis::setRange));
-    connect(mQuickPlot.yAxis, qOverload<const QCPRange &>(&QCPAxis::rangeChanged), mQuickPlot.yAxis2,
-            qOverload<const QCPRange &>(&QCPAxis::setRange));
+    {
+        quick_plot_.addGraph();
+        quick_plot_.addGraph();
+        quick_plot_.graph(0)->setPen({Qt::blue});
+        quick_plot_.graph(1)->setPen({Qt::red});
+        quick_plot_.setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
+        quick_plot_.xAxis->grid()->setSubGridVisible(true);
+        quick_plot_.axisRect()->setupFullAxesBox();
+        connect(quick_plot_.xAxis, qOverload<const QCPRange &>(&QCPAxis::rangeChanged), quick_plot_.xAxis2,
+                qOverload<const QCPRange &>(&QCPAxis::setRange));
+        connect(quick_plot_.yAxis, qOverload<const QCPRange &>(&QCPAxis::rangeChanged), quick_plot_.yAxis2,
+                qOverload<const QCPRange &>(&QCPAxis::setRange));
+    }
 
-    ui->plot->addGraph();
-    ui->plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
-    ui->plot->xAxis->grid()->setSubGridVisible(true);
-    ui->plot->xAxis->setScaleType(QCPAxis::stLogarithmic);
-    ui->plot->axisRect()->setupFullAxesBox();
-    connect(ui->plot->xAxis, qOverload<const QCPRange &>(&QCPAxis::rangeChanged), ui->plot->xAxis2,
-            qOverload<const QCPRange &>(&QCPAxis::setRange));
-    connect(ui->plot->yAxis, qOverload<const QCPRange &>(&QCPAxis::rangeChanged), ui->plot->yAxis2,
-            qOverload<const QCPRange &>(&QCPAxis::setRange));
-    ui->plot->xAxis->setNumberPrecision(0);
-    ui->plot->xAxis->setNumberFormat("f");
-    QSharedPointer<QCPAxisTickerLog> logTicker(new QCPAxisTickerLog);
-    ui->plot->xAxis->setTicker(logTicker);
+    {
+        ui->plot->addGraph();
+        ui->plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
+        ui->plot->xAxis->grid()->setSubGridVisible(true);
+        ui->plot->xAxis->setScaleType(QCPAxis::stLogarithmic);
+        ui->plot->axisRect()->setupFullAxesBox();
+        connect(ui->plot->xAxis, qOverload<const QCPRange &>(&QCPAxis::rangeChanged), ui->plot->xAxis2,
+                qOverload<const QCPRange &>(&QCPAxis::setRange));
+        connect(ui->plot->yAxis, qOverload<const QCPRange &>(&QCPAxis::rangeChanged), ui->plot->yAxis2,
+                qOverload<const QCPRange &>(&QCPAxis::setRange));
+        ui->plot->xAxis->setNumberPrecision(0);
+        ui->plot->xAxis->setNumberFormat("f");
+        QSharedPointer<QCPAxisTickerLog> log_ticker(new QCPAxisTickerLog);
+        ui->plot->xAxis->setTicker(log_ticker);
 
-    ui->plot2->addGraph();
-    ui->plot2->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
-    ui->plot2->xAxis->grid()->setSubGridVisible(true);
+        ui->plot2->addGraph();
+        ui->plot2->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
+        ui->plot2->xAxis->grid()->setSubGridVisible(true);
+    }
 
     // Supported sample rates combo box
-    for (auto sampleRate : mAudio.supportedSampleRates()) {
-        ui->eSampleRate->addItem(QString::number(sampleRate), sampleRate);
-    }
-    ui->eSampleRate->setCurrentText("48000");
+    {
+        for (auto sampleRate : audio_.supportedSampleRates()) {
+            ui->eSampleRate->addItem(QString::number(sampleRate), sampleRate);
+        }
+        ui->eSampleRate->setCurrentText("48000");
 
-    // Length
-    ui->eLength->addItem("128k", (1u << 17u));
-    ui->eLength->addItem("256k", (1u << 18u));
-    ui->eLength->addItem("512k", (1u << 19u));
-    ui->eLength->addItem("1M", (1u << 20u));
-    ui->eLength->setCurrentIndex(1);
+        // Length
+        ui->eLength->addItem("128k", (1u << 17u));
+        ui->eLength->addItem("256k", (1u << 18u));
+        ui->eLength->addItem("512k", (1u << 19u));
+        ui->eLength->addItem("1M", (1u << 20u));
+        ui->eLength->setCurrentIndex(1);
+    }
+
+    // Setup colormap
+    {
+        ui->plotSpectrogram->axisRect()->setupFullAxesBox(true);
+        // ui->plotSpectrogram->xAxis->setScaleType(QCPAxis::stLogarithmic);
+        // QSharedPointer<QCPAxisTickerLog> log_ticker(new QCPAxisTickerLog);
+        // ui->plotSpectrogram->xAxis->setTicker(log_ticker);
+        ui->plotSpectrogram->xAxis->setLabel("Frequency [Hz]");
+        ui->plotSpectrogram->yAxis->setLabel("Time [s]");
+        color_map_ = new QCPColorMap(ui->plotSpectrogram->xAxis, ui->plotSpectrogram->yAxis);
+        color_map_->data()->setSize(200, 200);
+        color_map_->data()->setRange(QCPRange(-4, 4), QCPRange(-4, 4)); // [20; 20000] Hz by [0; 10] s
+        color_map_->setGradient(QCPColorGradient::gpNight);
+
+        double x, y, z;
+        for (int xIndex = 0; xIndex < 200; ++xIndex) {
+            for (int yIndex = 0; yIndex < 200; ++yIndex) {
+                color_map_->data()->cellToCoord(xIndex, yIndex, &x, &y);
+                double r = 3 * qSqrt(x * x + y * y) + 1e-2;
+                z        = 2 * x *
+                    (qCos(r + 2) / r -
+                     qSin(r + 2) / r); // the B field strength of dipole radiation (modulo physical constants)
+                color_map_->data()->setCell(xIndex, yIndex, z);
+            }
+        }
+
+        color_map_->rescaleDataRange();
+        ui->plotSpectrogram->rescaleAxes();
+    }
 
     // Connections
     connect(ui->eSampleRate, qOverload<int>(&QComboBox::currentIndexChanged), this,
@@ -91,23 +127,23 @@ void MainWindow::quickPlot(std::string name, const std::vector<float> &signal, f
     std::vector<float> signal_t(signal.size());
     std::generate(signal_t.begin(), signal_t.end(), [&, n = 0]() mutable { return n++ * scaling; });
 
-    auto *graph      = mQuickPlot.addGraph();
-    const auto index = mQuickPlot.graphCount() - 1;
+    auto *graph      = quick_plot_.addGraph();
+    const auto index = quick_plot_.graphCount() - 1;
     graph->setPen(QColor::fromHslF(std::fmod(index * 0.618033988749895f, 1.0f), 1.0, 0.5));
     graph->setName(QString::fromStdString(name));
 
     graph->setData(QVector<double>(signal_t.begin(), signal_t.end()), QVector<double>(signal.begin(), signal.end()));
-    mQuickPlot.replot();
-    mQuickPlot.rescaleAxes();
-    mQuickPlot.show();
-    mQuickPlot.legend->setVisible(true);
+    quick_plot_.replot();
+    quick_plot_.rescaleAxes();
+    quick_plot_.show();
+    quick_plot_.legend->setVisible(true);
 }
 
-void MainWindow::handleFinished() {
-    mQuickPlot.clearGraphs();
+void MainWindow::handle_finished() {
+    quick_plot_.clearGraphs();
     using namespace ranges;
 
-    auto measurement = mAudio.getMeasurement();
+    auto measurement = audio_.getMeasurement();
 
     // Get measurement parameters
     const float f0                = ui->eStartFreq->value();
@@ -252,6 +288,29 @@ void MainWindow::handleFinished() {
     ui->grpMeasParams->setEnabled(true);
 }
 
+void MainWindow::handle_rta_data() {
+    auto data_arr = audio_.get_latest_rta_data_();
+    std::vector<float> data(data_arr.begin(), data_arr.end());
+    auto data_ft = fft::r2c(data);
+    auto n       = data_ft.size();
+
+    constexpr float sensitivitydB = 4.6889;
+
+    std::vector<float> input_spl_ft(n);
+
+    std::transform(std::execution::par, data_ft.begin(), data_ft.end(), input_spl_ft.begin(), [&](const auto &a) {
+        const float normalized_magnitude = std::abs(a) / (2 * n + 1);
+        const float dbfs                 = 20 * std::log10(normalized_magnitude);
+        return 120 + dbfs - sensitivitydB;
+    });
+
+    quick_plot_.clearGraphs();
+    quick_plot_.xAxis->setScaleType(QCPAxis::stLogarithmic);
+    QSharedPointer<QCPAxisTickerLog> log_ticker(new QCPAxisTickerLog);
+    quick_plot_.xAxis->setTicker(log_ticker);
+    quickPlot("rta", input_spl_ft);
+}
+
 void MainWindow::on_bMeasure_clicked() {
     // Get measurement parameters
     const auto f0          = ui->eStartFreq->value();
@@ -268,7 +327,7 @@ void MainWindow::on_bMeasure_clicked() {
         Generator::SynchronizedSweptSine(ui->eStartFreq->value(), ui->eEndFreq->value(), length, sample_rate);
 
     // mAudio.start(generator, volume_DBFS);
-    mAudio.startSweep(f0, ff, length, sample_rate, volume_DBFS);
+    audio_.startSweep(f0, ff, length, sample_rate, volume_DBFS);
 }
 
 void MainWindow::updateMeasurementDuration() {
@@ -299,3 +358,5 @@ void MainWindow::on_eEndFreq_valueChanged(int ff) {
 }
 
 } // namespace Audio
+
+void Audio::MainWindow::on_bToggleSpectrogram_clicked() { audio_.startRTA(); }

@@ -33,17 +33,21 @@ class MainWindow : public QMainWindow {
     void on_eEndFreq_valueChanged(int ff);
     void on_bMeasure_clicked();
 
+    void on_bToggleSpectrogram_clicked();
+
   private:
     void updateMeasurementDuration();
 
-    void handleFinished();
+    void handle_finished();
+    void handle_rta_data();
 
   private:
     Ui::MainWindow *ui;
-    QtAwesome *mAwesome;
+    QtAwesome *awesome_;
 
-    AudioIO mAudio;
-    QCustomPlot mQuickPlot;
+    AudioIO audio_;
+    QCustomPlot quick_plot_;
+    QCPColorMap *color_map_;
 };
 
 } // namespace Audio

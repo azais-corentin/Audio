@@ -48,7 +48,7 @@ std::vector<fft::fcomplex> fft::c2c(std::vector<fft::fcomplex> &input, Direction
     return output;
 }
 
-std::vector<float> fft::r2r(std::vector<float> &input, fft::Direction d) {
+std::vector<float> fft::r2r(std::vector<float> &input) {
     const auto n = input.size();
     std::vector<float> output(n);
     output.resize(n);

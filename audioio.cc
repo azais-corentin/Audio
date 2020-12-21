@@ -18,9 +18,9 @@ namespace Audio {
 
 constexpr const float allSampleRates[] = {8000, 11025, 16000, 22050, 44100, 48000, 88200, 96000, 176400, 192000};
 
-static int audioCallback(const void *input_buffer, void *output_buffer, unsigned long samples_per_buffer,
-                         const PaStreamCallbackTimeInfo * /*time_info*/, PaStreamCallbackFlags /*status_flags*/,
-                         void *user_data) {
+static int audio_generator_callback(const void *input_buffer, void *output_buffer, unsigned long samples_per_buffer,
+                                    const PaStreamCallbackTimeInfo * /*time_info*/,
+                                    PaStreamCallbackFlags /*status_flags*/, void *user_data) {
     auto data       = static_cast<AudioData *>(user_data);
     auto ro_mic     = static_cast<const float *>(input_buffer);
     auto wo_speaker = static_cast<float *>(output_buffer);
@@ -68,6 +68,23 @@ static int audioCallback(const void *input_buffer, void *output_buffer, unsigned
             return state;
         },
         data->generator);
+}
+
+static int audio_rta_callback(const void *input_buffer, void * /*output_buffer*/, unsigned long samples_per_buffer,
+                              const PaStreamCallbackTimeInfo * /*time_info*/, PaStreamCallbackFlags /*status_flags*/,
+                              void *user_data) {
+    auto data   = static_cast<RTAAudioData *>(user_data);
+    auto ro_mic = static_cast<const float *>(input_buffer);
+
+    for (std::size_t i = 0; i < samples_per_buffer; i++) {
+        data->data_[data->index_++] = *ro_mic++;
+        if (data->index_ >= 24000) {
+            data->index_ = 0;
+            data->parent_->handle_rta_data(data->data_);
+        }
+    }
+
+    return data->stop_ ? paComplete : paContinue;
 }
 
 template <double PaDeviceInfo::*m> static bool lessThan(const PaDeviceInfo *a, const PaDeviceInfo *b) {
@@ -255,7 +272,7 @@ void AudioIO::startSweep(float f0, float ff, std::size_t length, std::size_t sam
     PaError err;
 
     err = Pa_OpenStream(&stream_, &inputParameters, &outputParameters, sample_rate, paFramesPerBufferUnspecified,
-                        paClipOff, audioCallback, &data_);
+                        paClipOff, audio_generator_callback, &data_);
     if (err != paNoError) {
         spdlog::error("Pa_OpenStream error #{}: {} ", err, Pa_GetErrorText(err));
         return;
@@ -265,6 +282,52 @@ void AudioIO::startSweep(float f0, float ff, std::size_t length, std::size_t sam
         stream_, [](void *userData) { static_cast<AudioData *>(userData)->parent->on_audio_finished(); });
     if (err != paNoError) {
         spdlog::error("Pa_SetStreamFinishedCallback error #{}: {} ", err, Pa_GetErrorText(err));
+        return;
+    }
+
+    err = Pa_StartStream(stream_);
+    if (err != paNoError) {
+        spdlog::error("Pa_StartStream error #{}: {} ", err, Pa_GetErrorText(err));
+        return;
+    }
+
+    spdlog::info("Hardware sample rate: {}", Pa_GetStreamInfo(stream_)->sampleRate);
+}
+
+void AudioIO::startRTA() {
+    std::size_t sample_rate = 48000;
+
+    // Validate sample rate
+    if (std::find(supported_sample_rates_.begin(), supported_sample_rates_.end(), sample_rate) ==
+        std::end(supported_sample_rates_)) {
+        spdlog::error("Unsupported sample rate: {}", sample_rate);
+        return;
+    }
+    // Check we're not already sweeping
+    if (Pa_IsStreamActive(stream_) == 1) {
+        spdlog::error("Another stream is active, closing!");
+        Pa_CloseStream(stream_);
+        return;
+    }
+
+    // Setup input parameters
+    auto inputDeviceInfo = Pa_GetDeviceInfo(Pa_GetDefaultInputDevice());
+
+    auto inputParameters = PaStreamParameters{.device                    = Pa_GetDefaultInputDevice(),
+                                              .channelCount              = 1,
+                                              .sampleFormat              = paFloat32,
+                                              .suggestedLatency          = inputDeviceInfo->defaultLowInputLatency,
+                                              .hostApiSpecificStreamInfo = nullptr};
+
+    rta_data_.init(this);
+
+    // Configure stream
+    PaError err;
+
+    err = Pa_OpenStream(&stream_, &inputParameters, nullptr, sample_rate, paFramesPerBufferUnspecified, paClipOff,
+                        audio_rta_callback, &rta_data_);
+    if (err != paNoError) {
+        spdlog::error("Pa_OpenStream error #{}: {} ", err, Pa_GetErrorText(err));
         return;
     }
 
@@ -299,5 +362,12 @@ void AudioIO::on_audio_finished() {
 
     emit audio_finished();
 }
+
+void AudioIO::handle_rta_data(std::array<float, 24000> data) {
+    latest_rta_data_ = data;
+    emit on_rta_data();
+}
+
+std::array<float, 24000> AudioIO::get_latest_rta_data_() { return latest_rta_data_; }
 
 } // namespace Audio

@@ -6,15 +6,15 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>800</width>
-    <height>600</height>
+    <width>1227</width>
+    <height>607</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QGridLayout" name="gridLayout">
+   <layout class="QGridLayout" name="gridLayout" columnstretch="1,1">
     <item row="0" column="0">
      <widget class="QGroupBox" name="grpMeasParams">
       <property name="sizePolicy">
@@ -179,13 +179,23 @@
     <item row="0" column="1">
      <widget class="QCustomPlot" name="plot2" native="true"/>
     </item>
-    <item row="1" column="0" colspan="2">
+    <item row="1" column="1">
+     <widget class="QCustomPlot" name="plotSpectrogram" native="true"/>
+    </item>
+    <item row="1" column="0">
      <widget class="QCustomPlot" name="plot" native="true">
       <property name="sizePolicy">
        <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
         <horstretch>0</horstretch>
         <verstretch>0</verstretch>
        </sizepolicy>
+      </property>
+     </widget>
+    </item>
+    <item row="2" column="1">
+     <widget class="QPushButton" name="bToggleSpectrogram">
+      <property name="text">
+       <string>Toggle</string>
       </property>
      </widget>
     </item>
@@ -196,7 +206,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>800</width>
+     <width>1227</width>
      <height>20</height>
     </rect>
    </property>

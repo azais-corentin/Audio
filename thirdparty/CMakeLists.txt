@@ -1,3 +1,6 @@
+include(vcpkg/scripts/buildsystems/vcpkg.cmake)
+include(vcpkg/scripts/cmake/vcpkg_configure_qmake.cmake)
+
 target_sources(Audio PRIVATE
     qcustomplot/qcustomplot.h
     qcustomplot/qcustomplot.cpp

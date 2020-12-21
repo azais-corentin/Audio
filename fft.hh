@@ -24,7 +24,7 @@ class fft {
 
     // Forward/Backward
     static std::vector<fcomplex> c2c(std::vector<fcomplex> &input, Direction d);
-    static std::vector<float> r2r(std::vector<float> &input, Direction d);
+    static std::vector<float> r2r(std::vector<float> &input);
 };
 
 } // namespace Audio
