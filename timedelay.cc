@@ -9,56 +9,63 @@
 
 namespace Audio::TimeDelay {
 
-std::size_t estimate(std::vector<float> &a, std::vector<float> &b, std::size_t max_delay, Estimator method) {
-    std::vector<float> values;
+/**
+ * @brief Estimates the delay (in samples) of measured with regards to reference.
+ *
+ * @note Assumes that the delay is positive.
+ */
+std::size_t estimate(std::vector<float> &reference, std::vector<float> &measured, std::size_t max_delay,
+                     Estimator method) {
     switch (method) {
-    case Estimator::CrossCorrelation:
-        values = cc(a, b, max_delay);
-        break;
-    case Estimator::PhaseDifference:
-        values = phat(a, b, max_delay);
-        break;
+    case Estimator::CrossCorrelation: {
+        const auto values = cc(reference, measured, max_delay);
+        // Find the maximum absolute value
+        const auto [argmin, argmax] = std::minmax_element(values.begin(), values.end());
+        const auto delay_samples    = std::abs(*argmax) > std::abs(*argmin) ? argmax : argmin;
+        return std::distance(values.begin(), delay_samples);
+    }
+    case Estimator::PhaseDifference: {
+        const auto values = phat(reference, measured, max_delay);
+        // Find the maximum absolute value
+        const auto [argmin, argmax] = std::minmax_element(values.begin(), values.end());
+        const auto delay_samples    = std::abs(*argmax) > std::abs(*argmin) ? argmax : argmin;
+        return 2 * std::distance(delay_samples, values.end()) - values.size();
+    }
     }
 
-    auto max = std::max_element(values.begin(), values.end());
-    return std::distance(values.begin(), max) - max_delay;
+    return 0;
 }
 
 std::vector<float> cc(std::vector<float> &a, std::vector<float> &b, std::size_t max_delay) {
-    std::vector<float> values(2 * max_delay + 1);
-    std::vector<int32_t> delays(values.size());
-    std::iota(delays.begin(), delays.end(), -static_cast<int32_t>(max_delay));
+    std::size_t count = max_delay + 1;
+    std::vector<float> values(count);
+    std::vector<int32_t> delays(count);
+    std::iota(delays.begin(), delays.end(), 0);
 
-    std::transform(std::execution::par, delays.begin(), delays.end(), values.begin(), [&](int32_t delay) {
-        if (delay < 0) {
-            return std::transform_reduce(std::execution::par_unseq, std::next(a.begin(), -delay), a.end(), b.begin(),
-                                         0.f);
-        } else {
-            return std::transform_reduce(std::execution::par_unseq, a.begin(), std::next(a.end(), -delay),
-                                         std::next(b.begin(), delay), 0.f);
-        }
+    std::transform(std::execution::par_unseq, delays.begin(), delays.end(), values.begin(), [&](int32_t delay) {
+        return std::transform_reduce(std::execution::par_unseq, a.begin(), std::next(a.end(), -delay),
+                                     std::next(b.begin(), delay), 0.f);
     });
 
     return values;
 }
 
 std::vector<float> phat(std::vector<float> &a, std::vector<float> &b, std::size_t) {
-    std::vector<std::complex<float>> ac(a.size());
+    /*std::vector<std::complex<float>> ac(a.size());
     std::vector<std::complex<float>> bc(b.size());
     std::transform(std::execution::par_unseq, a.begin(), a.end(), ac.begin(),
                    [](const auto &a) { return std::complex(a); });
     std::transform(std::execution::par_unseq, b.begin(), b.end(), bc.begin(),
-                   [](const auto &b) { return std::complex(b); });
+                   [](const auto &b) { return std::complex(b); });*/
 
-    auto a_dft = fft::c2c(ac, fft::Direction::Forward);
-    auto b_dft = fft::c2c(bc, fft::Direction::Forward);
+    auto a_dft = fft::r2c(a);
+    auto b_dft = fft::r2c(b);
     std::vector<std::complex<float>> g_phat(a_dft.size());
 
+    assert(a_dft.size() == b_dft.size());
+
     std::transform(std::execution::seq, a_dft.begin(), a_dft.end(), b_dft.begin(), g_phat.begin(),
-                   [](const std::complex<float> &a, const std::complex<float> &b) {
-                       const auto abconj = a * std::conj(b);
-                       return abconj / std::abs(abconj);
-                   });
+                   [](const std::complex<float> &a, const std::complex<float> &b) { return a * std::conj(b); });
 
     spdlog::info("a::size {}", a.size());
     spdlog::info("a_dft::size {}", a_dft.size());

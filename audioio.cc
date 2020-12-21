@@ -1,5 +1,6 @@
 #include "audioio.hh"
 
+#include <magic_enum.hpp>
 #include <portaudio.h>
 #include <range/v3/action/join.hpp>
 #include <range/v3/range/conversion.hpp>
@@ -106,6 +107,10 @@ AudioIO::AudioIO() {
                                                .suggestedLatency          = 0,
                                                .hostApiSpecificStreamInfo = nullptr};
 
+    for (auto pair : magic_enum::enum_entries<PaHostApiTypeId>()) {
+        spdlog::info("{}: {}", pair.second, pair.first);
+    }
+
     auto step_init = std::chrono::high_resolution_clock::now();
 
     for (auto sampleRate : allSampleRates) {
@@ -120,11 +125,11 @@ AudioIO::AudioIO() {
             spdlog::error("Pa_OpenStream error #{}: {} ", err, Pa_GetErrorText(err));
             return;
         }
-        if (err == paNoError) { mSupportedSampleRates.push_back(sampleRate); }
+        if (err == paNoError) { supported_sample_rates_.push_back(sampleRate); }
         Pa_CloseStream(stream);
     }
 
-    auto t1 = mSupportedSampleRates |
+    auto t1 = supported_sample_rates_ |
               ranges::views::transform([](float sampleRate) { return fmt::format("{:.0f}", sampleRate); }) |
               ranges::to_vector;
     auto sSR = t1 | ranges::views::join(", ") | ranges::to<std::string>;
@@ -136,7 +141,7 @@ AudioIO::AudioIO() {
     PaStream *stream;
 
     err = Pa_OpenStream(
-        &stream, &inputParameters, &outputParameters, mSupportedSampleRates.back(), framesPerBuffer, paClipOff,
+        &stream, &inputParameters, &outputParameters, supported_sample_rates_.back(), framesPerBuffer, paClipOff,
         [](const void *, void *, unsigned long, const PaStreamCallbackTimeInfo *, PaStreamCallbackFlags,
            void *) -> int { return paContinue; },
         nullptr);
@@ -161,7 +166,7 @@ AudioIO::AudioIO() {
 
     auto step_latency = std::chrono::high_resolution_clock::now();
 
-    mInitSuccessful = true;
+    init_successful_ = true;
 
     spdlog::info("Initialized in {:.2f} ms: init {:.2f} ms + sample rates {:.2f} ms + latency "
                  "{:.2f} ms",
@@ -174,22 +179,24 @@ AudioIO::~AudioIO() {
     if (err != paNoError) spdlog::error("PortAudio error code {}: {}", err, Pa_GetErrorText(err));
 }
 
-const std::vector<float> &AudioIO::supportedSampleRates() { return mSupportedSampleRates; }
+const std::vector<float> &AudioIO::supportedSampleRates() { return supported_sample_rates_; }
 
-void AudioIO::startSweep(float f0, float ff, std::size_t length, std::size_t sampleRate, float volumeDBFS) {
+// void AudioIO::start(std::unique_ptr<Generator::Base> generator, float volumeDBFS) {}
+
+void AudioIO::startSweep(float f0, float ff, std::size_t length, std::size_t sample_rate, float volume_DBFS) {
     // Validate sample rate
-    if (std::find(mSupportedSampleRates.begin(), mSupportedSampleRates.end(), sampleRate) ==
-        std::end(mSupportedSampleRates)) {
-        spdlog::error("Unsupported sample rate: {}", sampleRate);
+    if (std::find(supported_sample_rates_.begin(), supported_sample_rates_.end(), sample_rate) ==
+        std::end(supported_sample_rates_)) {
+        spdlog::error("Unsupported sample rate: {}", sample_rate);
         return;
     }
     // Validate volume
-    if (volumeDBFS > 0) {
-        spdlog::error("Volume {} dBFS cannot be above 0", volumeDBFS);
+    if (volume_DBFS > 0) {
+        spdlog::error("Volume {} dBFS cannot be above 0", volume_DBFS);
         return;
     }
     // Check we're not already sweeping
-    if (Pa_IsStreamActive(mStream) == 1) {
+    if (Pa_IsStreamActive(stream_) == 1) {
         spdlog::error("Previous sweep is not finished");
         return;
     }
@@ -216,7 +223,7 @@ void AudioIO::startSweep(float f0, float ff, std::size_t length, std::size_t sam
         PaStream *stream;
 
         PaError err = Pa_OpenStream(
-            &stream, &inputParameters, &outputParameters, sampleRate, 2, paClipOff,
+            &stream, &inputParameters, &outputParameters, sample_rate, 2, paClipOff,
             [](const void *, void *, unsigned long, const PaStreamCallbackTimeInfo *, PaStreamCallbackFlags,
                void *) -> int { return paContinue; },
             nullptr);
@@ -237,60 +244,60 @@ void AudioIO::startSweep(float f0, float ff, std::size_t length, std::size_t sam
     spdlog::info("Measured latency: input {} ms / ouput {} ms", inputLatency * 1000, outputLatency * 1000);
 
     // Remove 50 ms to the length to allow reflections to get into the measured signals
-    length -= 0.05 * sampleRate;
+    length -= 0.05 * sample_rate;
 
     // Configure audio data
     // Silence = 100ms + input & output latency
-    mData.init<Generator::SynchronizedSweptSine>(this, 2, (0.1 + inputLatency + outputLatency) * sampleRate,
-                                                 std::pow(10, volumeDBFS / 20.), f0, ff, length, sampleRate);
+    data_.init<Generator::SynchronizedSweptSine>(this, 2, (0.1 + inputLatency + outputLatency) * sample_rate,
+                                                 std::pow(10, volume_DBFS / 20.), f0, ff, length, sample_rate);
 
     // Configure stream
     PaError err;
 
-    err = Pa_OpenStream(&mStream, &inputParameters, &outputParameters, sampleRate, paFramesPerBufferUnspecified,
-                        paClipOff, audioCallback, &mData);
+    err = Pa_OpenStream(&stream_, &inputParameters, &outputParameters, sample_rate, paFramesPerBufferUnspecified,
+                        paClipOff, audioCallback, &data_);
     if (err != paNoError) {
         spdlog::error("Pa_OpenStream error #{}: {} ", err, Pa_GetErrorText(err));
         return;
     }
 
     err = Pa_SetStreamFinishedCallback(
-        mStream, [](void *userData) { static_cast<AudioData *>(userData)->parent->onAudioFinished(); });
+        stream_, [](void *userData) { static_cast<AudioData *>(userData)->parent->on_audio_finished(); });
     if (err != paNoError) {
         spdlog::error("Pa_SetStreamFinishedCallback error #{}: {} ", err, Pa_GetErrorText(err));
         return;
     }
 
-    err = Pa_StartStream(mStream);
+    err = Pa_StartStream(stream_);
     if (err != paNoError) {
         spdlog::error("Pa_StartStream error #{}: {} ", err, Pa_GetErrorText(err));
         return;
     }
 
-    spdlog::info("Hardware sample rate: {}", Pa_GetStreamInfo(mStream)->sampleRate);
+    spdlog::info("Hardware sample rate: {}", Pa_GetStreamInfo(stream_)->sampleRate);
 }
 
-PaStream *AudioIO::getStream() { return mStream; }
+PaStream *AudioIO::getStream() { return stream_; }
 
-std::vector<float> &AudioIO::getReferenceData() { return mData.data_reference; }
+std::vector<float> &AudioIO::getReferenceData() { return data_.data_reference; }
 
-std::vector<float> &AudioIO::getMeasuredData() { return mData.data_measured; }
+std::vector<float> &AudioIO::getMeasuredData() { return data_.data_measured; }
 
 MeasurementData AudioIO::getMeasurement() {
     return MeasurementData{
-        .reference_signal = mData.data_reference,
-        .measured_signal  = mData.data_measured,
-        .generator        = mData.generator,
+        .reference_signal = data_.data_reference,
+        .measured_signal  = data_.data_measured,
+        .generator        = data_.generator,
     };
 }
 
-void AudioIO::onAudioFinished() {
-    spdlog::info(mData.data_measured.size());
-    spdlog::info(mData.data_reference.size());
-    spdlog::info(mData.data_measured.capacity());
-    spdlog::info(mData.data_reference.capacity());
+void AudioIO::on_audio_finished() {
+    spdlog::info(data_.data_measured.size());
+    spdlog::info(data_.data_reference.size());
+    spdlog::info(data_.data_measured.capacity());
+    spdlog::info(data_.data_reference.capacity());
 
-    emit audioFinished();
+    emit audio_finished();
 }
 
 } // namespace Audio

@@ -61,9 +61,9 @@ class AudioIO : public QObject {
 
     const std::vector<float> &supportedSampleRates();
 
-    void start(std::unique_ptr<Generator::Base> generator, float volumeDBFS);
+    // void start(std::unique_ptr<Generator::Base> generator, float volumeDBFS);
 
-    void startSweep(float f0, float ff, std::size_t length, std::size_t sampleRate, float volumeDBFS);
+    void startSweep(float f0, float ff, std::size_t length, std::size_t sample_rate, float volume_DBFS);
 
     PaStream *getStream();
 
@@ -71,17 +71,17 @@ class AudioIO : public QObject {
     std::vector<float> &getMeasuredData();
     MeasurementData getMeasurement();
 
-    void onAudioFinished();
+    void on_audio_finished();
 
   signals:
-    void audioFinished();
+    void audio_finished();
 
   private:
-    bool mInitSuccessful = false;
-    AudioData mData;
-    PaStream *mStream = nullptr;
+    bool init_successful_ = false;
+    AudioData data_;
+    PaStream *stream_ = nullptr;
 
-    std::vector<float> mSupportedSampleRates;
+    std::vector<float> supported_sample_rates_;
 };
 
 } // namespace Audio

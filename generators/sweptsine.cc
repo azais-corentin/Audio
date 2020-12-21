@@ -12,7 +12,7 @@ SweptSine::SweptSine(float f1, float f2, std::size_t length, std::size_t sample_
 float SweptSine::sample(std::size_t index) const {
     if (!finished(index)) {
         return std::sin(2.f * std::numbers::pi_v<float> * m_f1 * m_Tln *
-                        (std::exp(m_ln * static_cast<float>(index) / static_cast<float>(m_length)) - 1.f));
+                        std::expm1(m_ln * static_cast<float>(index) / static_cast<float>(length_)));
     }
 
     return 0;

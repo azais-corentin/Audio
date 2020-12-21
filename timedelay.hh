@@ -1,5 +1,6 @@
 #pragma once
 
+#include <complex>
 #include <vector>
 
 namespace Audio::TimeDelay {
@@ -10,7 +11,8 @@ enum Estimator
     PhaseDifference /*, AverageSquareDifference*/
 };
 
-std::size_t estimate(std::vector<float> &a, std::vector<float> &b, std::size_t max_delay, Estimator method);
+std::size_t estimate(std::vector<float> &reference, std::vector<float> &measured, std::size_t max_delay,
+                     Estimator method);
 
 std::vector<float> cc(std::vector<float> &a, std::vector<float> &b, std::size_t max_delay);
 std::vector<float> phat(std::vector<float> &a, std::vector<float> &b, std::size_t max_delay);

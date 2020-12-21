@@ -48,4 +48,18 @@ std::vector<fft::fcomplex> fft::c2c(std::vector<fft::fcomplex> &input, Direction
     return output;
 }
 
+std::vector<float> fft::r2r(std::vector<float> &input, fft::Direction d) {
+    const auto n = input.size();
+    std::vector<float> output(n);
+    output.resize(n);
+
+    auto p = fftwf_plan_r2r_1d(n, reinterpret_cast<float *>(input.data()), reinterpret_cast<float *>(output.data()),
+                               FFTW_REDFT00, FFTW_ESTIMATE);
+
+    fftwf_execute(p);
+    fftwf_destroy_plan(p);
+
+    return output;
+}
+
 } // namespace Audio

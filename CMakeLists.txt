@@ -90,3 +90,7 @@ target_link_libraries(Audio PRIVATE spdlog::spdlog spdlog::spdlog_header_only)
 # PortAudio
 find_package(portaudio CONFIG REQUIRED)
 target_link_libraries(Audio PRIVATE portaudio_static)
+
+# Magic-enum
+find_package(magic_enum CONFIG REQUIRED)
+target_link_libraries(Audio PRIVATE magic_enum::magic_enum)

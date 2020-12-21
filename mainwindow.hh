@@ -26,6 +26,8 @@ class MainWindow : public QMainWindow {
 
     void setupUi();
 
+    void quickPlot(std::string name, const std::vector<float> &signal, float scaling = 1);
+
   private slots:
     void on_eStartFreq_valueChanged(int f0);
     void on_eEndFreq_valueChanged(int ff);

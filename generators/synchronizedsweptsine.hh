@@ -13,15 +13,15 @@ class SynchronizedSweptSine : public BaseInterface<SynchronizedSweptSine> {
 
     float sample(std::size_t index) const;
 
-    std::vector<std::complex<float>> xtilde() const;
+    //    std::vector<std::complex<float>> xtilde() const;
 
   private:
     friend class BaseInterface<SynchronizedSweptSine>;
     // Configured parameters
-    const float m_f1, m_f2;
+    const float f1_, f2_;
 
     // Computed parameters
-    const float m_L;
+    const float k_, L_;
 };
 
 } // namespace Audio::Generator

@@ -28,7 +28,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     ui->setupUi(this);
     setupUi();
 
-    connect(&mAudio, &AudioIO::audioFinished, this, &MainWindow::handleFinished);
+    connect(&mAudio, &AudioIO::audio_finished, this, &MainWindow::handleFinished);
 }
 
 MainWindow::~MainWindow() { delete ui; }
@@ -87,7 +87,24 @@ void MainWindow::setupUi() {
     ui->plot->xAxis->setRange(ui->eStartFreq->value(), ui->eEndFreq->value());
 }
 
+void MainWindow::quickPlot(std::string name, const std::vector<float> &signal, float scaling /* = 1*/) {
+    std::vector<float> signal_t(signal.size());
+    std::generate(signal_t.begin(), signal_t.end(), [&, n = 0]() mutable { return n++ * scaling; });
+
+    auto *graph      = mQuickPlot.addGraph();
+    const auto index = mQuickPlot.graphCount() - 1;
+    graph->setPen(QColor::fromHslF(std::fmod(index * 0.618033988749895f, 1.0f), 1.0, 0.5));
+    graph->setName(QString::fromStdString(name));
+
+    graph->setData(QVector<double>(signal_t.begin(), signal_t.end()), QVector<double>(signal.begin(), signal.end()));
+    mQuickPlot.replot();
+    mQuickPlot.rescaleAxes();
+    mQuickPlot.show();
+    mQuickPlot.legend->setVisible(true);
+}
+
 void MainWindow::handleFinished() {
+    mQuickPlot.clearGraphs();
     using namespace ranges;
 
     auto measurement = mAudio.getMeasurement();
@@ -100,55 +117,48 @@ void MainWindow::handleFinished() {
     const std::size_t sample_rate = std::visit([](const auto &g) { return g.sample_rate(); }, measurement.generator);
     const float duration          = std::visit([](const auto &g) { return g.duration(); }, measurement.generator);
 
-    spdlog::info("Received measurement:");
-    spdlog::info("length {}, sample_rate {}, duration {} s", length, sample_rate, duration);
-    spdlog::info("reference: length {}", measurement.reference_signal.size());
-    spdlog::info("measured: length {}", measurement.measured_signal.size());
+    // spdlog::info("Received measurement:");
+    // spdlog::info("length {}, sample_rate {}, duration {} s", length, sample_rate, duration);
+    spdlog::info("original reference size {}", measurement.reference_signal.size());
+    spdlog::info("original measured size  {}", measurement.measured_signal.size());
 
     // Compute sample delay between measured and reference signals
-    auto sample_delay = TimeDelay::estimate(measurement.reference_signal, measurement.measured_signal,
-                                            0.5 * sample_rate, TimeDelay::CrossCorrelation);
-    if (sample_delay < 0) sample_delay = 0;
-    spdlog::info("Estimated delay: {} samples / {} ms", sample_delay, (1000.0 * sample_delay) / sample_rate);
+    auto measurement_delay = TimeDelay::estimate(measurement.reference_signal, measurement.measured_signal,
+                                                 0.5 * sample_rate, TimeDelay::PhaseDifference);
+    /*spdlog::info("estimated delay: {} cc / {} phat",
+                 TimeDelay::estimate(measurement.reference_signal, measurement.measured_signal, 0.5 * sample_rate,
+                                     TimeDelay::CrossCorrelation),
+                 TimeDelay::estimate(measurement.reference_signal, measurement.measured_signal, 0.5 * sample_rate,
+                                     TimeDelay::PhaseDifference));
+    */
+    spdlog::info("Estimated delay: {} samples / {} ms", measurement_delay, (1000.0 * measurement_delay) / sample_rate);
 
-    // Shifts both reference and measured signals according to sample
-    measurement.reference_signal.resize(full_length);
-    // Remove the first n samples
+    // measurement.reference_signal.resize(full_length, 0);
+    // Shifts measured signals according to measurement_delay
     measurement.measured_signal.erase(measurement.measured_signal.begin(),
-                                      std::next(measurement.measured_signal.begin(), sample_delay));
-    measurement.measured_signal.resize(full_length);
+                                      std::next(measurement.measured_signal.begin(), measurement_delay - 1));
+    measurement.measured_signal.resize(measurement.reference_signal.size(), 0);
 
-    auto Fy     = fft::r2c(measurement.measured_signal);
-    auto xtilde = std::get<Generator::SynchronizedSweptSine>(measurement.generator).xtilde();
+    spdlog::info("shifted reference size {}", measurement.reference_signal.size());
+    spdlog::info("shifted measured size  {}", measurement.measured_signal.size());
 
-    spdlog::info("xtilde::size {}", xtilde.size());
+    // Fx is the dft of x
+    auto Fy = fft::r2c(measurement.measured_signal);
+    auto Fx = fft::r2c(measurement.reference_signal);
     spdlog::info("Fy::size {}", Fy.size());
+    spdlog::info("Fx::size {}", Fx.size());
 
-    std::vector<std::complex<float>> H(Fy.size());
-    std::transform(Fy.begin(), Fy.end(), xtilde.begin(), H.begin(),
-                   [](const auto &Fy, const auto &xtilde) { return Fy * xtilde; });
+    std::vector<std::complex<float>> Fh(Fy.size());
+    std::transform(Fy.begin(), Fy.end(), Fx.begin(), Fh.begin(),
+                   [](const auto &Fy, const auto &Fx) { return Fy / Fx; });
 
-    auto h = fft::c2r(H);
-
+    // Impulse response
+    auto h = fft::c2r(Fh);
     spdlog::info("h::size {}", h.size());
 
-    std::vector<float> signal_t(h.size());
-    std::generate(signal_t.begin(), signal_t.end(),
-                  [&, n = -1.f / sample_rate]() mutable { return n += 1.f / sample_rate; });
-
-    mQuickPlot.graph(0)->data().clear();
-    mQuickPlot.graph(0)->addData(QVector<double>{signal_t.begin(), signal_t.end()},
-                                 QVector<double>{h.begin(), h.end()});
-    mQuickPlot.graph(1)->data().clear();
-    /*mQuickPlot.graph(1)->addData(QVector<double>{signal_t.begin(), signal_t.end()},
-                                 QVector<double>{measurement.measured_signal.begin(),
-                                                 measurement.measured_signal.end()});*/
-    mQuickPlot.rescaleAxes();
-    mQuickPlot.replot();
-    mQuickPlot.show();
-
-    spdlog::info("shifted reference: length {}", measurement.reference_signal.size());
-    spdlog::info("shifted measured: length {}", measurement.measured_signal.size());
+    // quickPlot("reference_signal", measurement.reference_signal);
+    // quickPlot("measured_signal", measurement.measured_signal);
+    quickPlot("impulse response", h, 1.f / sample_rate);
 
     auto reference_ft = fft::r2c(measurement.reference_signal);
     auto measured_ft  = fft::r2c(measurement.measured_signal);
@@ -161,7 +171,7 @@ void MainWindow::handleFinished() {
 
     std::transform(std::execution::par, measured_ft.begin(), measured_ft.end(), input_spl_ft.begin(),
                    [&](const auto &a) {
-                       const float normalized_magnitude = std::abs(a) / n;
+                       const float normalized_magnitude = std::abs(a) / (2 * n + 1);
                        const float dbfs                 = 20 * std::log10(normalized_magnitude);
                        return 120 + dbfs - sensitivitydB;
                    });
@@ -244,17 +254,21 @@ void MainWindow::handleFinished() {
 
 void MainWindow::on_bMeasure_clicked() {
     // Get measurement parameters
-    const auto f0         = ui->eStartFreq->value();
-    const auto ff         = ui->eEndFreq->value();
-    const auto length     = ui->eLength->currentData().toUInt();
-    const auto sampleRate = ui->eSampleRate->currentData().toInt();
-    const auto volumeDBFS = ui->eVolumeDBFS->value();
-    const auto duration   = static_cast<double>(length) / sampleRate;
+    const auto f0          = ui->eStartFreq->value();
+    const auto ff          = ui->eEndFreq->value();
+    const auto length      = ui->eLength->currentData().toUInt();
+    const auto sample_rate = ui->eSampleRate->currentData().toInt();
+    const auto volume_DBFS = ui->eVolumeDBFS->value();
+    const auto duration    = static_cast<double>(length) / sample_rate;
 
     // Disable further editing
     ui->grpMeasParams->setEnabled(false);
 
-    mAudio.startSweep(f0, ff, length, sampleRate, volumeDBFS);
+    auto generator =
+        Generator::SynchronizedSweptSine(ui->eStartFreq->value(), ui->eEndFreq->value(), length, sample_rate);
+
+    // mAudio.start(generator, volume_DBFS);
+    mAudio.startSweep(f0, ff, length, sample_rate, volume_DBFS);
 }
 
 void MainWindow::updateMeasurementDuration() {
