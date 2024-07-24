@@ -1,3 +1,9 @@
-[submodule "thirdparty/vcpkg"]
-    path = thirdparty/vcpkg
+[submodule "external/vcpkg"]
+	path = external/vcpkg
     url = https://github.com/microsoft/vcpkg.git
+[submodule "external/QtAwesome"]
+	path = external/QtAwesome
+	url = https://github.com/gamecreature/QtAwesome.git
+[submodule "external/JKQtPlotter"]
+	path = external/JKQtPlotter
+	url = https://github.com/jkriege2/JKQtPlotter.git

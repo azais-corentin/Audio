@@ -1,0 +1,61 @@
+---
+Checks: "*,
+  -altera*,
+  -bugprone-exception-escape,
+  -cert-dcl59-cpp,
+  -clang-diagnostic-pragma-once-outside-header,
+  -cppcoreguidelines-avoid-const-or-ref-data-members,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-type-vararg,-hicpp-vararg,
+  -fuchsia*,
+  -google-build-namespaces,
+  -google-build-using-namespace,
+  -llvm-header-guard,
+  -llvmlibc*,
+  -misc-include-cleaner,
+  -misc-non-private-member-variables-in-classes,
+  -modernize-use-trailing-return-type,
+  -readability-isolate-declaration,
+  -readability-magic-numbers,
+  -readability-redundant-access-specifiers,
+  -readability-static-accessed-through-instance"
+FormatStyle: file
+CheckOptions:
+  # CamelCase types
+  - key: "readability-identifier-naming.NamespaceCase"
+    value: "CamelCase"
+  - key: "readability-identifier-naming.ClassCase"
+    value: "CamelCase"
+  - key: "readability-identifier-naming.StructCase"
+    value: "CamelCase"
+  - key: "readability-identifier-naming.EnumCase"
+    value: "CamelCase"
+  - key: "readability-identifier-naming.TypedefCase"
+    value: "CamelCase"
+  - key: "readability-identifier-naming.TypeAliasCase"
+    value: "CamelCase"
+  - key: "readability-identifier-naming.TypeTemplateParameterCase"
+    value: "CamelCase"
+  # Abstract class prefix
+  - key: "readability-identifier-naming.AbstractClassPrefix"
+    value: "Abstract"
+  # camelCase
+  - key: "readability-identifier-naming.FunctionCase"
+    value: "camelBack"
+  - key: "readability-identifier-naming.ParameterCase"
+    value: "camelBack"
+  - key: "readability-identifier-naming.ValueTemplateParameterCase"
+    value: "camelBack"
+  - key: "readability-identifier-naming.VariableCase"
+    value: "camelBack"
+  - key: "readability-identifier-naming.StaticConstantCase"
+    value: "camelBack"
+  # UPPER_CASE
+  - key: "readability-identifier-naming.MacroDefinitionCase"
+    value: "UPPER_CASE"
+  # Private members suffix
+  - key: "readability-identifier-naming.PrivateMemberSuffix"
+    value: "_"

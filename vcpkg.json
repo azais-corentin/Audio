@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "dependencies": [
+    "fmt",
+    "spdlog",
+    "magic-enum",
+    "range-v3",
+    "rtaudio",
+    {
+      "name": "fftw3",
+      "features": ["avx", "avx2", "sse", "sse2", "threads"]
+    },
+    {
+      "name": "kfr",
+      "features": ["dft"]
+    }
+  ]
+}
